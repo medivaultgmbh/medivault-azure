@@ -1,1 +1,29 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+tfplan
+plan.json
+
+# NOTE: .terraform.lock.hcl is deliberately NOT ignored. It pins provider
+# versions and hashes, so committing it makes runs reproducible.
+
+# Policy gate working files
+conftest.txt
+violations.txt
+violations.json
+negative-test-evidence.*
+
+# OS
 .DS_Store
+Thumbs.db

@@ -16,16 +16,16 @@
 data "azurerm_client_config" "current" {}
 
 resource "azurerm_key_vault" "grc" {
-  name                        = "${var.name_prefix}-kv-${var.suffix}"
-  resource_group_name         = var.resource_group_name
-  location                    = var.location
-  tenant_id                   = data.azurerm_client_config.current.tenant_id
-  sku_name                    = "premium" # HSM-backed keys required for GDPR Art. 32
+  name                = "${var.name_prefix}-kv-${var.suffix}"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  tenant_id           = data.azurerm_client_config.current.tenant_id
+  sku_name            = "premium" # HSM-backed keys required for GDPR Art. 32
 
   # Soft delete + purge protection: keys cannot be deleted or purged for
   # soft_delete_retention_days, equivalent to aws_kms_key deletion_window_in_days.
-  soft_delete_retention_days  = 90
-  purge_protection_enabled    = true
+  soft_delete_retention_days = 90
+  purge_protection_enabled   = true
 
   # Restrict access to the private subnet only — no public endpoint.
   public_network_access_enabled = false

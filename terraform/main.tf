@@ -201,9 +201,9 @@ resource "azurerm_storage_account" "datasets" {
   resource_group_name      = azurerm_resource_group.main.name
   location                 = azurerm_resource_group.main.location
   account_tier             = "Standard"
-  account_replication_type = "GZRS"     # Geo-zone-redundant for BC/DR RTO < 4h
+  account_replication_type = "GZRS" # Geo-zone-redundant for BC/DR RTO < 4h
   account_kind             = "StorageV2"
-  is_hns_enabled           = true       # Hierarchical namespace = ADLS Gen2
+  is_hns_enabled           = true # Hierarchical namespace = ADLS Gen2
 
   # GDPR-Gap-02: no public access
   public_network_access_enabled   = false
@@ -423,13 +423,13 @@ resource "azurerm_linux_function_app" "intake" {
   }
 
   app_settings = {
-    COSMOS_ENDPOINT              = azurerm_cosmosdb_account.intake.endpoint
-    COSMOS_DATABASE              = azurerm_cosmosdb_sql_database.intake.name
-    COSMOS_CONTAINER             = azurerm_cosmosdb_sql_container.submissions.name
-    ADLS_ACCOUNT_NAME            = azurerm_storage_account.datasets.name
-    ADLS_CONTAINER_NAME          = azurerm_storage_container.healthcare_datasets.name
-    MANAGED_IDENTITY_CLIENT_ID   = azurerm_user_assigned_identity.workload.client_id
-    FUNCTIONS_WORKER_RUNTIME     = "python"
+    COSMOS_ENDPOINT                       = azurerm_cosmosdb_account.intake.endpoint
+    COSMOS_DATABASE                       = azurerm_cosmosdb_sql_database.intake.name
+    COSMOS_CONTAINER                      = azurerm_cosmosdb_sql_container.submissions.name
+    ADLS_ACCOUNT_NAME                     = azurerm_storage_account.datasets.name
+    ADLS_CONTAINER_NAME                   = azurerm_storage_container.healthcare_datasets.name
+    MANAGED_IDENTITY_CLIENT_ID            = azurerm_user_assigned_identity.workload.client_id
+    FUNCTIONS_WORKER_RUNTIME              = "python"
     APPLICATIONINSIGHTS_CONNECTION_STRING = module.grc_baseline.app_insights_connection_string
     # No plaintext secrets: all connection strings use managed identity.
     # Key Vault references are injected at runtime — no credentials in app settings.
@@ -508,7 +508,7 @@ resource "azurerm_monitor_diagnostic_setting" "apim" {
   target_resource_id         = azurerm_api_management.main.id
   log_analytics_workspace_id = module.grc_baseline.log_analytics_workspace_id
 
-  enabled_log { category = "GatewayLogs" }    # All API request/response events
+  enabled_log { category = "GatewayLogs" } # All API request/response events
   enabled_log { category = "WebSocketConnectionLogs" }
 
   metric {
@@ -535,7 +535,7 @@ resource "azurerm_monitor_diagnostic_setting" "cosmos" {
   target_resource_id         = azurerm_cosmosdb_account.intake.id
   log_analytics_workspace_id = module.grc_baseline.log_analytics_workspace_id
 
-  enabled_log { category = "DataPlaneRequests" }  # All read/write operations on data
+  enabled_log { category = "DataPlaneRequests" } # All read/write operations on data
   enabled_log { category = "ControlPlaneRequests" }
 
   metric {

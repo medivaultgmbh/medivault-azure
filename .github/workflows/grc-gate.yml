@@ -270,7 +270,11 @@ jobs:
 
           conftest test plan.json --policy ../../. --all-namespaces --output table \
             > violations.txt 2>&1 || true
-          VIOLATIONS=$(grep -c '^\[GDPR' violations.txt 2>/dev/null || grep -ci 'FAIL' violations.txt || echo "?")
+          conftest test plan.json --policy ../../. --all-namespaces --output json \
+            > violations.json 2>/dev/null || true
+
+          VIOLATIONS=$(jq '[.[].failures // [] | length] | add // 0' violations.json 2>/dev/null || echo 0)
+          POLICY_FILES=$(jq -r '[.[].namespace] | unique | length' violations.json 2>/dev/null || echo 0)
 
           {
             echo "## Negative test PASSED - the gate rejected non-compliant infrastructure"
@@ -280,7 +284,8 @@ jobs:
             echo "| Fixture | \`policies/fixtures/noncompliant/\` |"
             echo "| Expected | Conftest REJECTS |"
             echo "| Actual | Rejected (exit code $status) |"
-            echo "| Violations detected | ${VIOLATIONS} |"
+            echo "| Violations detected | **${VIOLATIONS}** |"
+            echo "| Policy files triggered | ${POLICY_FILES} |"
             echo ""
             echo "The fixture deliberately violates every GDPR policy: public"
             echo "storage, TLS 1.0, no customer-managed key, periodic backup"
@@ -303,13 +308,16 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           cp violations.txt "$GITHUB_WORKSPACE/negative-test-evidence.txt"
+          cp violations.json "$GITHUB_WORKSPACE/negative-test-evidence.json" 2>/dev/null || true
 
       - name: Upload negative test evidence
         if: always() && github.actor != 'dependabot[bot]'
         uses: actions/upload-artifact@v7
         with:
           name: negative-test-evidence-${{ github.run_number }}
-          path: negative-test-evidence.txt
+          path: |
+            negative-test-evidence.txt
+            negative-test-evidence.json
           retention-days: 90
           if-no-files-found: ignore
 

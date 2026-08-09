@@ -56,7 +56,7 @@ resource "azurerm_storage_account" "public_and_weak_tls" {
   account_tier             = "Standard"
   account_replication_type = "LRS"
 
-  public_network_access_enabled = true    # VIOLATION: must be false
+  public_network_access_enabled = true     # VIOLATION: must be false
   min_tls_version               = "TLS1_0" # VIOLATION: must be TLS1_2
 }
 

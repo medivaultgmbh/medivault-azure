@@ -168,8 +168,8 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "break_glass_signin" {
   location            = var.location
 
   # P1 severity — any sign-in must trigger an immediate response
-  severity  = 0
-  frequency = "PT5M"  # evaluate every 5 minutes
+  severity        = 0
+  frequency       = "PT5M" # evaluate every 5 minutes
   window_duration = "PT5M"
 
   scopes = [azurerm_log_analytics_workspace.grc.id]

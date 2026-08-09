@@ -19,8 +19,8 @@
 
 terraform {
   backend "azurerm" {
-    key       = "medivault.demo.terraform.tfstate"
-    use_oidc  = true
+    key              = "medivault.demo.terraform.tfstate"
+    use_oidc         = true
     use_azuread_auth = true
   }
 }
