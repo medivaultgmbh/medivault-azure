@@ -80,6 +80,36 @@ be accepted.
 
 ---
 
+## Policy limitations discovered in operation
+
+Two limitations surfaced only once the gate ran against a real plan. Both are
+inherent to evaluating `terraform plan` output, and worth recording because they
+bound what the gate can honestly claim.
+
+**Unknown values at plan time.** Terraform marks any attribute it cannot resolve
+before apply as *(known after apply)* and omits it from `planned_values`. A
+policy asserting on such a value cannot distinguish "not configured" from "not
+yet computed".
+
+This produced a false positive on `azurerm_storage_account.datasets`: the
+`customer_managed_key` block is present and correct, but `key_vault_key_id`
+references a Key Vault key that does not exist yet, so the rule saw nothing and
+denied compliant infrastructure. Fixed by falling back to the `configuration`
+section, which records the expression whether or not it resolves.
+
+A false positive is more corrosive than a false negative here. A gate that
+blocks correct code gets bypassed, and once bypassing is normal the gate is
+decoration.
+
+**Unresolvable scopes weaken the RBAC rule.** `gdpr_rbac_no_wildcard` inspects
+`scope` on role assignments, but in this configuration `scope` is a reference to
+a resource created in the same plan, so it is also unknown. The rule therefore
+passes vacuously rather than evaluating. It would still catch a hardcoded
+subscription-scope assignment — which is the case it was written for — but it
+cannot see computed ones. Recorded rather than fixed: the configuration fallback
+would need to resolve references transitively, which is beyond what Conftest
+does well.
+
 ## What this demonstrates
 
 Worth saying plainly, because it is the substantive governance point of the

@@ -37,3 +37,24 @@ has_customer_managed_key(resource) if {
 	cmk.key_vault_key_id != ""
 	cmk.key_vault_key_id != null
 }
+
+# UNKNOWN VALUES AT PLAN TIME
+#
+# The first rule alone produces a false positive. key_vault_key_id is usually a
+# reference to a Key Vault key that does not exist yet, so Terraform marks it
+# "(known after apply)" and omits it from planned_values entirely. That is
+# indistinguishable from "no customer_managed_key block was configured", and the
+# policy denies compliant infrastructure.
+#
+# The configuration section records the *expression* regardless of whether its
+# value can be resolved, so it can confirm the block exists and references
+# something. Weaker than asserting on the resolved value, and the honest
+# trade-off: the alternative is a gate that blocks correct code, which is how
+# policy-as-code gets switched off.
+#
+# gdpr_api_logging.rego uses the same fallback pattern.
+has_customer_managed_key(resource) if {
+	some cfg in input.configuration.root_module.resources
+	cfg.address == resource.address
+	cfg.expressions.customer_managed_key[_].key_vault_key_id
+}
