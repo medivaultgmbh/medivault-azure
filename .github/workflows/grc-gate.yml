@@ -127,12 +127,32 @@ jobs:
         if: github.actor != 'dependabot[bot]'
         working-directory: terraform
         run: |
-          set -euo pipefail
-          echo "Evaluating $(ls ../policies/*.rego | wc -l) GDPR policies against the plan"
-          conftest test plan.json \
-            --policy ../policies \
-            --all-namespaces \
-            --output table
+          set +e
+          conftest test plan.json --policy ../policies --all-namespaces --output table \
+            > conftest.txt 2>&1
+          status=$?
+          set -e
+
+          cat conftest.txt
+
+          POLICIES=$(ls ../policies/*.rego | wc -l | tr -d ' ')
+          RESOURCES=$(jq '[.planned_values.root_module.resources[]?] | length' plan.json 2>/dev/null || echo "?")
+
+          {
+            echo "### GDPR policy evaluation"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Policies evaluated | ${POLICIES} |"
+            echo "| Resources in plan | ${RESOURCES} |"
+            echo "| Result | $([ $status -eq 0 ] && echo 'PASS - no violations' || echo 'FAIL') |"
+            echo ""
+            echo '```'
+            cat conftest.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit $status
 
       - name: Upload plan evidence
         if: always() && github.actor != 'dependabot[bot]'
@@ -247,16 +267,51 @@ jobs:
           fi
 
           echo "Gate correctly rejected the fixture (conftest exit code $status)."
+
+          conftest test plan.json --policy ../../. --all-namespaces --output table \
+            > violations.txt 2>&1 || true
+          VIOLATIONS=$(grep -c '^\[GDPR' violations.txt 2>/dev/null || grep -ci 'FAIL' violations.txt || echo "?")
+
           {
-            echo "## Negative test passed"
+            echo "## Negative test PASSED - the gate rejected non-compliant infrastructure"
             echo ""
-            echo "The fixture in \`policies/fixtures/noncompliant/\` deliberately"
-            echo "violates all six GDPR policies. Conftest rejected it, which is"
-            echo "the expected and required outcome."
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Fixture | \`policies/fixtures/noncompliant/\` |"
+            echo "| Expected | Conftest REJECTS |"
+            echo "| Actual | Rejected (exit code $status) |"
+            echo "| Violations detected | ${VIOLATIONS} |"
             echo ""
-            echo "This is the evidence that the gate has teeth - an all-green"
-            echo "run against compliant code proves nothing on its own."
+            echo "The fixture deliberately violates every GDPR policy: public"
+            echo "storage, TLS 1.0, no customer-managed key, periodic backup"
+            echo "instead of continuous, an unrotated Key Vault key, Owner at"
+            echo "subscription scope, and an API allowing plaintext HTTP."
+            echo ""
+            echo "<details><summary>Full policy output</summary>"
+            echo ""
+            echo '```'
+            cat violations.txt
+            echo '```'
+            echo ""
+            echo "</details>"
+            echo ""
+            echo "**Why this job exists.** An all-green pipeline cannot"
+            echo "distinguish *the infrastructure is compliant* from *the"
+            echo "policies stopped working*. A gate that has never failed is not"
+            echo "evidence of control. This job fails the build if the gate ever"
+            echo "accepts the fixture."
           } >> "$GITHUB_STEP_SUMMARY"
+
+          cp violations.txt "$GITHUB_WORKSPACE/negative-test-evidence.txt"
+
+      - name: Upload negative test evidence
+        if: always() && github.actor != 'dependabot[bot]'
+        uses: actions/upload-artifact@v7
+        with:
+          name: negative-test-evidence-${{ github.run_number }}
+          path: negative-test-evidence.txt
+          retention-days: 90
+          if-no-files-found: ignore
 
   ############################################################################
   # 3. Deploy the affordable governance plane
