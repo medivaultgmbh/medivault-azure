@@ -278,6 +278,13 @@ echo "    storage account : $STATE_SA"
 az group create --name "$STATE_RG" --location westeurope \
   --subscription "$SUBSCRIPTION_ID" --output none
 
+if az group show --name "$STATE_RG" --subscription "$SUBSCRIPTION_ID" >/dev/null 2>&1; then
+  echo "    resource group ready"
+else
+  echo "    resource group NOT created - skipping backend"
+  STATE_RG=""
+fi
+
 if ! az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" --subscription "$SUBSCRIPTION_ID" >/dev/null 2>&1; then
   az storage account create \
     --name "$STATE_SA" \
@@ -289,7 +296,17 @@ if ! az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" --s
     --min-tls-version TLS1_2 \
     --allow-blob-public-access false \
     --output none
-  echo "    storage account created"
+
+  # Verify rather than assume. The previous version announced success whenever
+  # the create command did not error, which produced "storage account created"
+  # immediately followed by ParentResourceNotFound - a status line reporting
+  # intent instead of outcome is worse than no status line at all.
+  if az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" \
+       --subscription "$SUBSCRIPTION_ID" >/dev/null 2>&1; then
+    echo "    storage account created"
+  else
+    echo "    storage account NOT created - see the error above"
+  fi
 else
   echo "    storage account exists"
 fi
