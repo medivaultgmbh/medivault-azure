@@ -1,8 +1,7 @@
 ######################################################################
 # Azure Monitor + Log Analytics — management audit trail for the governed workload.
 #
-# AWS equivalent: aws_cloudtrail + aws_s3_bucket.cloudtrail (cgep-acme-health
-# baseline/cloudtrail.tf)
+# AWS equivalent: aws_cloudtrail + aws_s3_bucket.cloudtrail
 #
 # CloudTrail captures AWS management-plane events (API calls, config changes).
 # The Azure equivalent is a combination of:

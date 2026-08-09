@@ -2,7 +2,6 @@
 # Evidence Vault — immutable storage for CI/CD audit artefacts.
 #
 # AWS equivalent: aws_s3_bucket.evidence_vault with object_lock_enabled = true
-# (cgep-acme-health baseline/evidence-vault.tf)
 #
 # Azure Blob Storage immutability policies provide the same WORM (Write Once,
 # Read Many) guarantee as S3 Object Lock. Combined with versioning, private

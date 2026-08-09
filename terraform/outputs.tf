@@ -1,4 +1,4 @@
-# AWS equivalent: cgep-acme-health/terraform/outputs.tf
+# AWS equivalent: Terraform outputs exposing KMS key ARN, CloudTrail name, evidence bucket
 
 output "api_endpoint" {
   value       = "https://${azurerm_api_management.main.gateway_url}/intake"

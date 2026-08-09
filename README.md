@@ -7,7 +7,6 @@
 [![Deployed cost](https://img.shields.io/badge/deployed%20cost-~%E2%82%AC0.55%2Fmo-brightgreen)](docs/FINOPS.md)
 
 > **Context:** Cloud Computing for Business — Part 4 Practical Demonstration
-> **Source:** Adapted from `cgep-acme-health` (AWS / HIPAA)
 > **Target:** Microsoft Azure / GDPR + NIS2
 
 Infrastructure as code and compliance policy automation for the MediVault
@@ -38,9 +37,15 @@ suppressed.
 
 ---
 
-## AWS → Azure Service Mapping
+## AWS → Azure service mapping
 
-| AWS Resource (cgep-acme-health) | Azure Resource (medivault-azure) | Notes |
+Included as a portability reference, not because anything here was ported. The
+Terraform carries the same mapping in comments so the cost of leaving Azure
+stays visible rather than becoming a surprise — see
+[ADR-0001](https://github.com/medivaultgmbh/medivault-docs/blob/main/decisions/0001-microsoft-azure-as-primary-provider.md),
+where provider lock-in was accepted knowingly.
+
+| AWS resource | Azure resource | Notes |
 |:-------------------------------|:---------------------------------|:------|
 | `aws_kms_key` + `aws_kms_alias` | `azurerm_key_vault` + `azurerm_key_vault_key` | RSA-HSM 4096-bit; 90-day auto-rotation |
 | `aws_cloudtrail` | `azurerm_log_analytics_workspace` + `azurerm_monitor_diagnostic_setting` (per resource) | Subscription Activity Log + per-service diagnostic settings |
@@ -105,8 +110,7 @@ medivault-azure/
 
 ```bash
 # Create a resource group and storage account for Terraform state.
-# Run once before terraform init. Matches scripts/bootstrap-terraform-backend.sh
-# in cgep-acme-health but targets azurerm instead of aws.
+# Run once before terraform init. Handled automatically by scripts/bootstrap.sh.
 
 az group create \
   --name medivault-tfstate-rg \

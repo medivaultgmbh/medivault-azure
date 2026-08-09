@@ -1,4 +1,4 @@
-# AWS equivalent: baseline/outputs.tf in cgep-acme-health
+# AWS equivalent: baseline outputs (KMS key ARN, CloudTrail name, evidence bucket)
 # phi_kms_key_arn → gdpr_key_vault_key_id
 # cloudtrail_name → log_analytics_workspace_id
 # evidence_vault_bucket_name → evidence_vault_storage_account_name

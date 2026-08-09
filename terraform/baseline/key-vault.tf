@@ -1,7 +1,7 @@
 ######################################################################
 # Azure Key Vault — customer-managed key for GDPR-restricted data stores.
 #
-# AWS equivalent: aws_kms_key + aws_kms_alias (cgep-acme-health baseline/kms.tf)
+# AWS equivalent: aws_kms_key + aws_kms_alias
 #
 # The workload consumes this baseline output as the customer-managed key (CMK)
 # for ADLS Gen2 and Cosmos DB encryption, so cryptographic custody is

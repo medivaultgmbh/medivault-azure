@@ -1,4 +1,4 @@
-# Azure Storage backend — equivalent to the S3 + DynamoDB backend in cgep-acme-health.
+# Azure Storage backend — equivalent to an S3 + DynamoDB Terraform backend on AWS.
 #
 # Pre-requisite: run scripts/bootstrap-terraform-backend.sh to create the
 # storage account and container before the first `terraform init`.

@@ -1,7 +1,7 @@
 ######################################################################
 # MediVault — Healthcare Analytics API (Azure adaptation)
 #
-# AWS source:  cgep-acme-health/terraform/main.tf  (AWS / HIPAA)
+# Reference model: an equivalent AWS / HIPAA architecture (KMS, CloudTrail, S3, DynamoDB, Lambda)
 # This file:   medivault-azure/terraform/main.tf    (Azure / GDPR + NIS2)
 #
 # Service mapping (AWS → Azure):
@@ -13,7 +13,7 @@
 #   aws_apigatewayv2_api      → azurerm_api_management
 #   aws_cloudwatch_log_group  → azurerm_log_analytics_workspace (in baseline)
 #
-# GDPR gap labels mirror the cgep-acme-health GAP-0x convention:
+# GDPR gap labels follow a GAP-0x convention:
 #   GDPR-Gap-01: ADLS Gen2 encryption uses CMK (Art. 32)
 #   GDPR-Gap-02: No public network access on any data store (Art. 25)
 #   GDPR-Gap-03: HTTPS-only / TLS 1.2 minimum (Art. 32)
