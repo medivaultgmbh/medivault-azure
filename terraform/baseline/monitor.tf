@@ -85,6 +85,9 @@ resource "azurerm_monitor_activity_log_alert" "key_vault_key_deletion" {
   scopes              = ["/subscriptions/${data.azurerm_client_config.current.subscription_id}"]
 
   criteria {
+    # Required. Key deletion is a control-plane operation, so it lands in the
+    # Administrative category of the Activity Log.
+    category       = "Administrative"
     resource_type  = "Microsoft.KeyVault/vaults"
     operation_name = "Microsoft.KeyVault/vaults/keys/delete"
     status         = "Succeeded"
@@ -106,6 +109,7 @@ resource "azurerm_monitor_activity_log_alert" "storage_public_access" {
   scopes              = ["/subscriptions/${data.azurerm_client_config.current.subscription_id}"]
 
   criteria {
+    category       = "Administrative"
     resource_type  = "Microsoft.Storage/storageAccounts"
     operation_name = "Microsoft.Storage/storageAccounts/write"
     status         = "Succeeded"
@@ -168,9 +172,9 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "break_glass_signin" {
   location            = var.location
 
   # P1 severity — any sign-in must trigger an immediate response
-  severity        = 0
-  frequency       = "PT5M" # evaluate every 5 minutes
-  window_duration = "PT5M"
+  severity             = 0
+  evaluation_frequency = "PT5M" # evaluate every 5 minutes
+  window_duration      = "PT5M"
 
   scopes = [azurerm_log_analytics_workspace.grc.id]
 
