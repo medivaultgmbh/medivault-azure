@@ -1,0 +1,356 @@
+###############################################################################
+# MediVault GRC Gate
+#
+# Three independent jobs:
+#
+#   1. policy-gate           Plans the FULL reference architecture and runs
+#                            tfsec + OPA/Conftest against it. Must PASS.
+#                            Never applies - this architecture is the documented
+#                            target state, not something we can afford to run.
+#
+#   2. policy-gate-negative  Plans a deliberately non-compliant fixture and
+#                            asserts Conftest REJECTS it. Must FAIL to pass.
+#                            A gate that has never failed is not evidence of
+#                            control; this job is what makes the gate credible.
+#
+#   3. deploy-demo           Manual dispatch only. Applies terraform/minimal
+#                            (governance plane, ~EUR 2/month) and uploads a
+#                            cosign-signed evidence bundle to the evidence vault.
+#
+# Authentication is OIDC federation throughout. No client secrets.
+###############################################################################
+
+name: GRC Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_demo:
+        description: "Apply terraform/minimal after the gate passes"
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  TF_VERSION: "1.9.8"
+  CONFTEST_VERSION: "0.56.0"
+
+concurrency:
+  group: grc-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ############################################################################
+  # 1. Policy gate against the reference architecture
+  ############################################################################
+  policy-gate:
+    name: Policy gate (reference architecture)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Install Conftest
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin conftest
+          conftest --version
+
+      - name: Terraform fmt check
+        working-directory: terraform
+        run: terraform fmt -check -recursive -diff
+
+      # -backend=false: the gate only needs a plan, not shared state. This also
+      # means the gate runs before the remote backend has been bootstrapped.
+      - name: Terraform init + validate
+        working-directory: terraform
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+      - name: Terraform plan
+        working-directory: terraform
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          terraform plan -out=tfplan -input=false
+          terraform show -json tfplan > plan.json
+          echo "Plan generated: $(wc -c < plan.json) bytes"
+
+      - name: tfsec static scan
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          working_directory: terraform
+          soft_fail: true # Advisory: Conftest below is the blocking control
+
+      - name: GDPR policy gate (Conftest)
+        working-directory: terraform
+        run: |
+          set -euo pipefail
+          echo "Evaluating $(ls ../policies/*.rego | wc -l) GDPR policies against the plan"
+          conftest test plan.json \
+            --policy ../policies \
+            --all-namespaces \
+            --output table
+
+      - name: Upload plan evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-plan-${{ github.run_number }}
+          path: terraform/plan.json
+          retention-days: 30
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "## Policy gate - reference architecture"
+            echo ""
+            echo "Evaluated \`terraform/\` (the Part 1/2 target state) against"
+            echo "$(ls policies/*.rego | wc -l) GDPR policies."
+            echo ""
+            echo "This configuration is **planned and gated, never applied** -"
+            echo "it costs roughly EUR 240/month and its private endpoints are"
+            echo "unreachable from a hosted runner. See \`docs/EXCEPTIONS.md\`."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  ############################################################################
+  # 2. Negative test - prove the gate rejects bad infrastructure
+  ############################################################################
+  policy-gate-negative:
+    name: Policy gate negative test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Install Conftest
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin conftest
+
+      - name: Plan the non-compliant fixture
+        working-directory: policies/fixtures/noncompliant
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+        run: |
+          terraform init -backend=false
+          terraform plan -out=tfplan -input=false
+          terraform show -json tfplan > plan.json
+
+      # The assertion: Conftest MUST exit non-zero here. If it passes, the
+      # policies have regressed and this job fails the pipeline.
+      - name: Assert the gate REJECTS the fixture
+        working-directory: policies/fixtures/noncompliant
+        run: |
+          set +e
+          conftest test plan.json \
+            --policy ../../. \
+            --all-namespaces \
+            --output table
+          status=$?
+          set -e
+
+          echo ""
+          if [ $status -eq 0 ]; then
+            echo "::error::POLICY REGRESSION - the gate ACCEPTED a configuration that violates every GDPR rule."
+            {
+              echo "## Negative test FAILED"
+              echo ""
+              echo "Conftest accepted the non-compliant fixture. The GDPR policies"
+              echo "are no longer enforcing. Treat this as a control failure."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          echo "Gate correctly rejected the fixture (conftest exit code $status)."
+          {
+            echo "## Negative test passed"
+            echo ""
+            echo "The fixture in \`policies/fixtures/noncompliant/\` deliberately"
+            echo "violates all six GDPR policies. Conftest rejected it, which is"
+            echo "the expected and required outcome."
+            echo ""
+            echo "This is the evidence that the gate has teeth - an all-green"
+            echo "run against compliant code proves nothing on its own."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  ############################################################################
+  # 3. Deploy the affordable governance plane
+  ############################################################################
+  deploy-demo:
+    name: Deploy governance plane (demo)
+    runs-on: ubuntu-latest
+    needs: [policy-gate, policy-gate-negative]
+    if: github.event_name == 'workflow_dispatch' && inputs.deploy_demo
+    environment: medivault-demo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Install Conftest + Cosign
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://github.com/open-policy-agent/conftest/releases/download/v${CONFTEST_VERSION}/conftest_${CONFTEST_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin conftest
+
+      - uses: sigstore/cosign-installer@v3
+
+      - name: Terraform apply (minimal)
+        id: apply
+        working-directory: terraform/minimal
+        env:
+          ARM_USE_OIDC: "true"
+          ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          # FinOps guardrail. budget_alert_emails is required and has no
+          # default: a budget with no recipient is not a control.
+          TF_VAR_budget_amount: ${{ vars.BUDGET_AMOUNT || 20 }}
+          TF_VAR_budget_alert_emails: '["${{ vars.COST_ALERT_EMAIL }}"]'
+        run: |
+          set -euo pipefail
+
+          if [ -z "${{ vars.COST_ALERT_EMAIL }}" ]; then
+            echo "::error::COST_ALERT_EMAIL repository variable is not set. Refusing to deploy without a budget alert recipient."
+            exit 1
+          fi
+
+          terraform init \
+            -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
+            -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
+            -backend-config="container_name=tfstate"
+          terraform plan -out=tfplan -input=false
+          terraform show -json tfplan > plan.json
+          terraform apply -auto-approve -input=false tfplan
+          terraform output -json > outputs.json
+
+          echo "storage_account=$(jq -r '.evidence_vault_storage_account.value' outputs.json)" >> "$GITHUB_OUTPUT"
+
+      # Advisory only. The demo deployment knowingly violates the public-access
+      # policies (EXC-001, EXC-002) so it can be reached from a hosted runner.
+      # Findings are recorded, not suppressed, and not allowed to block.
+      - name: Record accepted deviations (advisory)
+        working-directory: terraform/minimal
+        run: |
+          set +e
+          conftest test plan.json --policy ../../policies --all-namespaces --output table \
+            > deviations.txt 2>&1
+          set -e
+
+          {
+            echo "## Accepted deviations - demo deployment"
+            echo ""
+            echo "The demo governance plane deliberately fails the public-access"
+            echo "policies so that a GitHub-hosted runner can reach it. Each"
+            echo "deviation is registered in \`docs/EXCEPTIONS.md\`."
+            echo ""
+            echo '```'
+            cat deviations.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Bundle and sign evidence
+        working-directory: terraform/minimal
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp plan.json outputs.json deviations.txt evidence/
+
+          cat > evidence/manifest.json <<EOF
+          {
+            "repository": "${{ github.repository }}",
+            "commit": "${{ github.sha }}",
+            "run_id": "${{ github.run_id }}",
+            "run_number": "${{ github.run_number }}",
+            "actor": "${{ github.actor }}",
+            "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "configuration": "terraform/minimal",
+            "note": "Demo governance plane. Deviations from target architecture recorded in docs/EXCEPTIONS.md"
+          }
+          EOF
+
+          tar -czf evidence-${{ github.run_number }}.tar.gz -C evidence .
+
+          # Keyless signing: identity is the GitHub OIDC token, logged to the
+          # public Rekor transparency log. No signing key to store or rotate.
+          COSIGN_EXPERIMENTAL=1 cosign sign-blob \
+            --yes \
+            --output-signature evidence-${{ github.run_number }}.tar.gz.sig \
+            --output-certificate evidence-${{ github.run_number }}.tar.gz.pem \
+            evidence-${{ github.run_number }}.tar.gz
+
+      - name: Upload evidence to the evidence vault
+        working-directory: terraform/minimal
+        run: |
+          set -euo pipefail
+          ACCOUNT="${{ steps.apply.outputs.storage_account }}"
+          PREFIX="evidence-vault/runs/${{ github.run_number }}"
+
+          for f in evidence-${{ github.run_number }}.tar.gz*; do
+            az storage blob upload \
+              --account-name "$ACCOUNT" \
+              --container-name evidence-vault \
+              --name "$PREFIX/$f" \
+              --file "$f" \
+              --auth-mode login \
+              --overwrite
+            echo "uploaded $PREFIX/$f"
+          done
+
+      - name: Upload evidence artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-evidence-${{ github.run_number }}
+          path: terraform/minimal/evidence-${{ github.run_number }}.tar.gz*
+          retention-days: 90

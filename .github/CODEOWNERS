@@ -1,0 +1,24 @@
+# Code owners
+#
+# Every pull request automatically requests review from the owners matched
+# below. Combined with the "require review from Code Owners" branch protection
+# rule, this makes review non-optional for the paths that matter.
+#
+# Later-matching patterns take precedence, so the catch-all comes first.
+
+# Default owner for everything
+*                           @fdicarlo
+
+# Infrastructure and identity changes carry the most blast radius
+/terraform/                 @fdicarlo
+/policies/                  @fdicarlo
+/scripts/                   @fdicarlo
+
+# Anything that can mint a token or change what CI is permitted to do
+/.github/workflows/         @fdicarlo
+/.github/CODEOWNERS         @fdicarlo
+/.github/dependabot.yml     @fdicarlo
+
+# Governance documents - changes here alter what the project claims to enforce
+/docs/EXCEPTIONS.md         @fdicarlo
+/SECURITY.md                @fdicarlo

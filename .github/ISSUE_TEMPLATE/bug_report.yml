@@ -1,0 +1,57 @@
+name: Bug report
+description: Something does not work as documented
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For **security vulnerabilities**, do not open an issue — see
+        [SECURITY.md](../SECURITY.md) and report privately.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Include the exact error. For CI failures, the failing step's log.
+      placeholder: |
+        terraform apply fails with:
+        Error: AADSTS700213: No matching federated identity record found...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Terraform - reference architecture
+        - Terraform - demo deployment
+        - GDPR policies (Rego)
+        - GitHub Actions workflow
+        - Entra ID identity / OIDC federation
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: run-url
+    attributes:
+      label: Workflow run URL
+      description: If this is a CI failure.
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      value: |
+        - Terraform version:
+        - azurerm provider version:
+        - Running from: (local / GitHub Actions)

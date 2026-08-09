@@ -1,0 +1,237 @@
+#!/usr/bin/env bash
+#
+# Bootstrap the deploy identity for the GRC gate.
+#
+# Creates one Entra ID application with:
+#   - Contributor on the subscription (needed to create resource groups)
+#   - User Access Administrator (needed for the role assignment in minimal/)
+#   - federated credentials for GitHub Actions OIDC - no client secret
+#
+# Run once, as a subscription Owner. Idempotent: safe to re-run.
+#
+# Usage:
+#   ./scripts/bootstrap.sh <github-org> <github-repo>
+#
+set -euo pipefail
+
+ORG="${1:?usage: bootstrap.sh <github-org> <github-repo>}"
+REPO="${2:?usage: bootstrap.sh <github-org> <github-repo>}"
+
+APP_NAME="TF.MediVaultDeploy.ServicePrincipal"
+ENVIRONMENT="medivault-demo"
+
+echo "==> Checking Azure CLI login"
+SUBSCRIPTION_ID=$(az account show --query id -o tsv)
+TENANT_ID=$(az account show --query tenantId -o tsv)
+ACCOUNT=$(az account show --query user.name -o tsv)
+echo "    subscription : $SUBSCRIPTION_ID"
+echo "    tenant       : $TENANT_ID"
+echo "    signed in as : $ACCOUNT"
+
+###############################################################################
+# GitHub numeric IDs.
+#
+# Organisations using immutable OIDC subject claims emit
+#   repo:<org>@<orgId>/<repo>@<repoId>:environment:<env>
+# rather than the classic name-only form. We create BOTH federated credentials
+# so the pipeline authenticates either way - Entra matches the subject exactly
+# and simply ignores the one that does not apply.
+###############################################################################
+echo
+echo "==> Resolving GitHub numeric IDs"
+ORG_ID=$(curl -fsSL "https://api.github.com/orgs/${ORG}" | jq -r .id 2>/dev/null || echo "")
+REPO_ID=$(curl -fsSL "https://api.github.com/repos/${ORG}/${REPO}" | jq -r .id 2>/dev/null || echo "")
+
+if [[ -n "$ORG_ID" && "$ORG_ID" != "null" ]]; then
+  echo "    org id  : $ORG_ID"
+  echo "    repo id : $REPO_ID"
+else
+  echo "    could not resolve (private repo or rate limited) - creating classic subject only"
+fi
+
+###############################################################################
+# Application + service principal
+###############################################################################
+echo
+echo "==> Creating application: $APP_NAME"
+APP_ID=$(az ad app list --display-name "$APP_NAME" --query "[0].appId" -o tsv)
+
+if [[ -z "$APP_ID" ]]; then
+  APP_ID=$(az ad app create --display-name "$APP_NAME" --query appId -o tsv)
+  echo "    created  : $APP_ID"
+else
+  echo "    exists   : $APP_ID"
+fi
+
+if ! az ad sp show --id "$APP_ID" >/dev/null 2>&1; then
+  az ad sp create --id "$APP_ID" >/dev/null
+  echo "    service principal created"
+fi
+
+SP_OBJECT_ID=$(az ad sp show --id "$APP_ID" --query id -o tsv)
+
+###############################################################################
+# Azure RBAC
+#
+# Contributor       - create and manage resources
+# User Access Admin - required because terraform/minimal creates a role
+#                     assignment (Storage Blob Data Contributor on the evidence
+#                     vault). Contributor alone cannot grant roles.
+#
+# Both are scoped to this subscription only. Note this is intentionally broader
+# than the read-only identities in the Entra governance repo: this one deploys
+# infrastructure, so it needs write. That asymmetry is the reason the two
+# concerns live in separate identities.
+###############################################################################
+echo
+echo "==> Assigning Azure roles (subscription scope)"
+for ROLE in "Contributor" "User Access Administrator"; do
+  if az role assignment list --assignee "$APP_ID" --role "$ROLE" \
+       --scope "/subscriptions/${SUBSCRIPTION_ID}" --query "[0].id" -o tsv | grep -q .; then
+    echo "    already assigned : $ROLE"
+  else
+    az role assignment create \
+      --assignee-object-id "$SP_OBJECT_ID" \
+      --assignee-principal-type ServicePrincipal \
+      --role "$ROLE" \
+      --scope "/subscriptions/${SUBSCRIPTION_ID}" >/dev/null
+    echo "    assigned         : $ROLE"
+  fi
+done
+
+###############################################################################
+# Terraform state backend
+#
+# Globally unique storage account name derived from the subscription ID, so
+# re-running this script always targets the same account.
+###############################################################################
+STATE_RG="medivault-tfstate-rg"
+STATE_SA="mvtfstate$(echo -n "$SUBSCRIPTION_ID" | sha256sum | cut -c1-12)"
+
+echo
+echo "==> Creating Terraform state backend"
+echo "    resource group  : $STATE_RG"
+echo "    storage account : $STATE_SA"
+
+az group create --name "$STATE_RG" --location westeurope --output none
+
+if ! az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" >/dev/null 2>&1; then
+  az storage account create \
+    --name "$STATE_SA" \
+    --resource-group "$STATE_RG" \
+    --location westeurope \
+    --sku Standard_LRS \
+    --kind StorageV2 \
+    --min-tls-version TLS1_2 \
+    --allow-blob-public-access false \
+    --output none
+  echo "    storage account created"
+else
+  echo "    storage account exists"
+fi
+
+# Versioning protects against a corrupted or truncated state write.
+az storage account blob-service-properties update \
+  --account-name "$STATE_SA" \
+  --resource-group "$STATE_RG" \
+  --enable-versioning true \
+  --output none
+
+az storage container create \
+  --name tfstate \
+  --account-name "$STATE_SA" \
+  --auth-mode login \
+  --output none 2>/dev/null || true
+
+# The deploy identity needs data-plane access to read and write state.
+az role assignment create \
+  --assignee-object-id "$SP_OBJECT_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Storage Blob Data Contributor" \
+  --scope "$(az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" --query id -o tsv)" \
+  --output none 2>/dev/null || true
+echo "    state access granted to deploy identity"
+
+###############################################################################
+# Federated credentials
+###############################################################################
+add_fic() {
+  local name="$1" subject="$2"
+  if az ad app federated-credential list --id "$APP_ID" \
+       --query "[?name=='${name}'] | [0].name" -o tsv | grep -q .; then
+    echo "    exists  : $name"
+    return
+  fi
+  az ad app federated-credential create --id "$APP_ID" --parameters "{
+    \"name\": \"${name}\",
+    \"issuer\": \"https://token.actions.githubusercontent.com\",
+    \"subject\": \"${subject}\",
+    \"audiences\": [\"api://AzureADTokenExchange\"]
+  }" >/dev/null
+  echo "    created : $name"
+  echo "              -> ${subject}"
+}
+
+echo
+echo "==> Creating federated credentials"
+
+# Environment-scoped: used by the deploy-demo job.
+add_fic "github-env-${ENVIRONMENT}" "repo:${ORG}/${REPO}:environment:${ENVIRONMENT}"
+
+# Branch-scoped: used by the policy-gate jobs, which run on push to main
+# without an environment.
+add_fic "github-main" "repo:${ORG}/${REPO}:ref:refs/heads/main"
+
+# Pull requests, so the gate runs on PRs too.
+add_fic "github-pr" "repo:${ORG}/${REPO}:pull_request"
+
+if [[ -n "$ORG_ID" && "$ORG_ID" != "null" ]]; then
+  add_fic "github-env-${ENVIRONMENT}-immutable" "repo:${ORG}@${ORG_ID}/${REPO}@${REPO_ID}:environment:${ENVIRONMENT}"
+  add_fic "github-main-immutable"                "repo:${ORG}@${ORG_ID}/${REPO}@${REPO_ID}:ref:refs/heads/main"
+  add_fic "github-pr-immutable"                  "repo:${ORG}@${ORG_ID}/${REPO}@${REPO_ID}:pull_request"
+fi
+
+###############################################################################
+# Output
+###############################################################################
+cat <<EOF
+
+════════════════════════════════════════════════════════════════════
+ Bootstrap complete
+════════════════════════════════════════════════════════════════════
+
+Add these as repository VARIABLES (Settings > Secrets and variables >
+Actions > Variables). They are identifiers, not secrets:
+
+  AZURE_CLIENT_ID        ${APP_ID}
+  AZURE_TENANT_ID        ${TENANT_ID}
+  AZURE_SUBSCRIPTION_ID  ${SUBSCRIPTION_ID}
+  TFSTATE_RESOURCE_GROUP ${STATE_RG}
+  TFSTATE_STORAGE_ACCOUNT ${STATE_SA}
+
+And these two for the FinOps guardrail:
+
+  COST_ALERT_EMAIL       <your email>   (REQUIRED - deploy refuses without it)
+  BUDGET_AMOUNT          20             (optional, defaults to 20)
+
+Then create an environment named:
+
+  ${ENVIRONMENT}
+
+(Settings > Environments > New environment). No variables needed on the
+environment itself - the repository-level ones above are inherited.
+
+Run the gate:
+  Actions > GRC Gate > Run workflow
+  Tick "Apply terraform/minimal" to deploy the governance plane.
+
+Local use of the demo config:
+  cd terraform/minimal
+  terraform init \\
+    -backend-config="resource_group_name=${STATE_RG}" \\
+    -backend-config="storage_account_name=${STATE_SA}" \\
+    -backend-config="container_name=tfstate"
+
+Teardown when finished (do this - it stops the meter):
+  terraform destroy
+EOF

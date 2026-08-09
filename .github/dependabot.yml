@@ -1,0 +1,59 @@
+# Dependabot
+#
+# Supply chain matters more than usual here: a compromised GitHub Action runs
+# with `id-token: write`, which means it can mint an Azure access token. Pinning
+# and patching Actions is an identity control, not just hygiene.
+
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "07:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 5
+    labels: ["dependencies", "security"]
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # Azure and Terraform tooling move together; one PR is easier to review
+      # than four, and the blast radius is identical.
+      azure-tooling:
+        patterns:
+          - "azure/*"
+          - "hashicorp/*"
+      actions-core:
+        patterns:
+          - "actions/*"
+
+  - package-ecosystem: "terraform"
+    directory: "/terraform"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "terraform"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "terraform"
+    directory: "/terraform/minimal"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "terraform"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "terraform"
+    directory: "/terraform/baseline"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels: ["dependencies", "terraform"]
+    commit-message:
+      prefix: "chore(deps)"

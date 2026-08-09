@@ -1,0 +1,60 @@
+name: Compliance gap
+description: A control is missing, or a policy does not enforce what it claims
+labels: ["compliance"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when a regulatory control is unimplemented, or when a policy
+        in `policies/` passes something it should reject.
+
+        A policy that accepts non-compliant infrastructure is the most
+        important class of defect in this project — it produces false assurance.
+
+  - type: dropdown
+    id: regulation
+    attributes:
+      label: Regulation
+      options:
+        - GDPR
+        - NIS2
+        - ISO 27001:2022
+        - Other / cross-cutting
+    validations:
+      required: true
+
+  - type: input
+    id: article
+    attributes:
+      label: Article or control reference
+      placeholder: "GDPR Art. 32(1)(a) / NIS2 Art. 21(2)(d) / ISO A.8.15"
+    validations:
+      required: true
+
+  - type: textarea
+    id: gap
+    attributes:
+      label: The gap
+      description: What is required, and what the code actually does.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: gap-type
+    attributes:
+      label: Type
+      options:
+        - Control not implemented
+        - Policy exists but does not catch the violation (false negative)
+        - Policy blocks compliant infrastructure (false positive)
+        - Exception expired or no longer justified
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Demonstrating it
+      description: |
+        For a false negative, ideally a fixture that SHOULD be rejected but is not.
+        Add it to `policies/fixtures/noncompliant/` in the fixing PR.

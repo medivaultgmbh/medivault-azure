@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/medivaultgmbh/.github/security/policy
+    about: Report privately via GitHub Security Advisories — never in a public issue.
+  - name: Project documentation
+    url: https://github.com/medivaultgmbh/medivault-docs
+    about: Architecture reports, decision records, and diagrams.
