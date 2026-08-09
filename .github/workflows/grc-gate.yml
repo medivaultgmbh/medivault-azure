@@ -95,15 +95,25 @@ jobs:
         working-directory: terraform
         run: terraform fmt -check -recursive -diff
 
-      # -backend=false: the gate only needs a plan, not shared state. This also
-      # means the gate runs before the remote backend has been bootstrapped.
+      # The gate produces a plan and must never touch shared state.
+      #
+      # -backend=false is enough for `validate` but not for `plan`: the config
+      # declares a remote azurerm backend, and plan refuses to run against an
+      # uninitialised one. Overriding the backend to `local` gives a throwaway
+      # state file on the runner, so the gate works before the remote backend
+      # exists and can never write to it afterwards.
+      #
+      # *_override.tf is gitignored, so this file is CI-only and never committed.
       - name: Terraform init + validate
         working-directory: terraform
         env:
           ARM_USE_OIDC: "true"
           ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
         run: |
-          terraform init -backend=false
+          printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf
+          echo "--- backend_override.tf ---"; cat backend_override.tf
+
+          terraform init -input=false
           terraform validate
 
       - name: Terraform plan
@@ -236,7 +246,8 @@ jobs:
           ARM_USE_OIDC: "true"
           ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
         run: |
-          terraform init -backend=false
+          # No backend block in the fixture, so this defaults to local state.
+          terraform init -input=false
           terraform plan -out=tfplan -input=false
           terraform show -json tfplan > plan.json
 
