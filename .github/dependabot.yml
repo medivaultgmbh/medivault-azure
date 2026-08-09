@@ -1,3 +1,20 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PAUSED during active development.
+#
+# open-pull-requests-limit: 0 stops Dependabot opening version-update PRs while
+# leaving this configuration in place as the record of intent. Set the limits
+# back to their previous values once the repository has settled.
+#
+# Why: a dependency bot assumes a repository whose shape is stable. While files
+# are being renamed, workflows rewritten and history rebased, every automated PR
+# moves main underneath in-flight work and turns each push into a conflict
+# resolution. The updates were also landing unreviewed simply to clear the
+# queue - actions/checkout v4 to v7 and upload-artifact v4 to v7 were merged
+# that way, which is the opposite of what the bot is for.
+#
+# NOTE: this does not affect Dependabot SECURITY alerts, which are a repository
+# setting rather than part of this file. Vulnerability notifications continue.
+# ─────────────────────────────────────────────────────────────────────────────
 # Dependabot
 #
 # Supply chain matters more than usual here: a compromised GitHub Action runs
@@ -13,7 +30,7 @@ updates:
       day: "monday"
       time: "07:00"
       timezone: "Europe/Berlin"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0   # paused (was 5)
     labels: ["dependencies", "security"]
     commit-message:
       prefix: "chore(deps)"
@@ -33,7 +50,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0   # paused (was 3)
     labels: ["dependencies", "terraform"]
     commit-message:
       prefix: "chore(deps)"
@@ -54,7 +71,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0   # paused (was 3)
     labels: ["dependencies", "terraform"]
     commit-message:
       prefix: "chore(deps)"
@@ -75,7 +92,7 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-    open-pull-requests-limit: 3
+    open-pull-requests-limit: 0   # paused (was 3)
     labels: ["dependencies", "terraform"]
     commit-message:
       prefix: "chore(deps)"
