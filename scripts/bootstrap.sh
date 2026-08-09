@@ -138,62 +138,6 @@ for ROLE in "Contributor" "User Access Administrator"; do
 done
 
 ###############################################################################
-# Terraform state backend
-#
-# Globally unique storage account name derived from the subscription ID, so
-# re-running this script always targets the same account.
-###############################################################################
-STATE_RG="medivault-tfstate-rg"
-STATE_SA="mvtfstate$(echo -n "$SUBSCRIPTION_ID" | sha256sum | cut -c1-12)"
-
-echo
-echo "==> Creating Terraform state backend"
-echo "    resource group  : $STATE_RG"
-echo "    storage account : $STATE_SA"
-
-az group create --name "$STATE_RG" --location westeurope \
-  --subscription "$SUBSCRIPTION_ID" --output none
-
-if ! az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" --subscription "$SUBSCRIPTION_ID" >/dev/null 2>&1; then
-  az storage account create \
-    --name "$STATE_SA" \
-    --resource-group "$STATE_RG" \
-    --subscription "$SUBSCRIPTION_ID" \
-    --location westeurope \
-    --sku Standard_LRS \
-    --kind StorageV2 \
-    --min-tls-version TLS1_2 \
-    --allow-blob-public-access false \
-    --output none
-  echo "    storage account created"
-else
-  echo "    storage account exists"
-fi
-
-# Versioning protects against a corrupted or truncated state write.
-az storage account blob-service-properties update \
-  --account-name "$STATE_SA" \
-  --resource-group "$STATE_RG" \
-  --subscription "$SUBSCRIPTION_ID" \
-  --enable-versioning true \
-  --output none
-
-az storage container create \
-  --name tfstate \
-  --account-name "$STATE_SA" \
-  --auth-mode login \
-  --output none 2>/dev/null || true
-
-# The deploy identity needs data-plane access to read and write state.
-az role assignment create \
-  --assignee-object-id "$SP_OBJECT_ID" \
-  --assignee-principal-type ServicePrincipal \
-  --role "Storage Blob Data Contributor" \
-  --scope "$(az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" --subscription "$SUBSCRIPTION_ID" --query id -o tsv)" \
-  --output none 2>/dev/null || true
-echo "    state access granted to deploy identity"
-
-###############################################################################
 # FinOps guardrail - subscription budget
 #
 # WHY THIS LIVES IN BOOTSTRAP RATHER THAN IN TERRAFORM
@@ -309,6 +253,80 @@ if [[ -n "$ORG_ID" && "$ORG_ID" != "null" ]]; then
   add_fic "github-main-immutable"                "repo:${ORG}@${ORG_ID}/${REPO}@${REPO_ID}:ref:refs/heads/main"
   add_fic "github-pr-immutable"                  "repo:${ORG}@${ORG_ID}/${REPO}@${REPO_ID}:pull_request"
 fi
+
+###############################################################################
+# Terraform state backend (non-fatal)
+#
+# Ordered AFTER the federated credentials deliberately. The policy gate runs
+# `terraform init -backend=false` and needs no remote state at all - only the
+# demo deployment does. An earlier version created the backend first, so a
+# storage failure left the credentials uncreated and blocked the gate for a
+# reason unrelated to it.
+#
+# Dependencies should be ordered by what depends on them, not by narrative
+# convenience. Failures here warn and continue.
+###############################################################################
+set +e
+STATE_RG="medivault-tfstate-rg"
+STATE_SA="mvtfstate$(echo -n "$SUBSCRIPTION_ID" | sha256sum | cut -c1-12)"
+
+echo
+echo "==> Creating Terraform state backend"
+echo "    resource group  : $STATE_RG"
+echo "    storage account : $STATE_SA"
+
+az group create --name "$STATE_RG" --location westeurope \
+  --subscription "$SUBSCRIPTION_ID" --output none
+
+if ! az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" --subscription "$SUBSCRIPTION_ID" >/dev/null 2>&1; then
+  az storage account create \
+    --name "$STATE_SA" \
+    --resource-group "$STATE_RG" \
+    --subscription "$SUBSCRIPTION_ID" \
+    --location westeurope \
+    --sku Standard_LRS \
+    --kind StorageV2 \
+    --min-tls-version TLS1_2 \
+    --allow-blob-public-access false \
+    --output none
+  echo "    storage account created"
+else
+  echo "    storage account exists"
+fi
+
+# Versioning protects against a corrupted or truncated state write.
+az storage account blob-service-properties update \
+  --account-name "$STATE_SA" \
+  --resource-group "$STATE_RG" \
+  --subscription "$SUBSCRIPTION_ID" \
+  --enable-versioning true \
+  --output none
+
+az storage container create \
+  --name tfstate \
+  --account-name "$STATE_SA" \
+  --auth-mode login \
+  --output none 2>/dev/null || true
+
+# The deploy identity needs data-plane access to read and write state.
+az role assignment create \
+  --assignee-object-id "$SP_OBJECT_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Storage Blob Data Contributor" \
+  --scope "$(az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" --subscription "$SUBSCRIPTION_ID" --query id -o tsv)" \
+  --output none 2>/dev/null || true
+echo "    state access granted to deploy identity"
+
+set -e
+
+if ! az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" \
+       --subscription "$SUBSCRIPTION_ID" >/dev/null 2>&1; then
+  echo
+  echo "    WARNING: state backend not available."
+  echo "    The POLICY GATE is unaffected - it runs terraform init -backend=false."
+  echo "    Only the demo deployment (deploy-demo) needs remote state."
+fi
+
 
 ###############################################################################
 # Output
