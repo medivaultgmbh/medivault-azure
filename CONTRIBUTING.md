@@ -41,7 +41,21 @@ conftest test plan.json --policy ../../. --all-namespaces
 # MUST exit non-zero. If this passes, the policies have regressed.
 ```
 
-## Pull request requirements
+## Branch protection
+
+Protection is **off during active development** and applied once the repository
+structure has settled. Toggle it org-wide from `medivault-docs`:
+
+```bash
+./scripts/branch-protection.sh off   # building
+./scripts/branch-protection.sh on    # hardened
+```
+
+Build, settle, then harden. Turning protection on first and fighting it on every
+change adds ceremony without adding safety, since the only reviewer is the
+person making the change.
+
+## Pull request requirements (once protection is on)
 
 Branch protection on `main` enforces:
 

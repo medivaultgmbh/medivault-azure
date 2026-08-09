@@ -28,6 +28,44 @@ echo "    subscription : $SUBSCRIPTION_ID"
 echo "    tenant       : $TENANT_ID"
 echo "    signed in as : $ACCOUNT"
 
+# Pin the CLI to this subscription explicitly. Without this, a multi-tenant or
+# multi-subscription login can leave the default context pointing elsewhere.
+az account set --subscription "$SUBSCRIPTION_ID"
+
+# Preflight: identity operations (app registration, role assignment) hit Entra
+# and Authorization endpoints, which can succeed while the ARM resource plane
+# is still unavailable - typically on a newly created subscription, or one that
+# is disabled or expired. Fail here with a useful message rather than midway.
+echo
+echo "==> Preflight: checking ARM access to the subscription"
+STATE=$(az account show --query state -o tsv 2>/dev/null || echo "Unknown")
+echo "    subscription state : $STATE"
+
+if ! az group list --subscription "$SUBSCRIPTION_ID" --query "[0].name" -o tsv >/dev/null 2>&1; then
+  cat <<EOF
+
+ERROR: Azure Resource Manager cannot reach subscription $SUBSCRIPTION_ID.
+
+Identity objects may already have been created - this script is idempotent, so
+re-run it once the cause below is resolved.
+
+Diagnose:
+  az account list --refresh --all --output table
+  az account show --query "{name:name, state:state, tenant:tenantId}" -o jsonc
+
+Common causes:
+  - Subscription state is not "Enabled" (expired free trial, disabled, or
+    still provisioning). A brand-new subscription can take a few minutes
+    before ARM operations succeed.
+  - Stale CLI token cache. Fix:  az account clear && az login
+  - Resource providers not yet registered. Fix:
+      az provider register --namespace Microsoft.Storage --wait
+
+EOF
+  exit 1
+fi
+echo "    ARM access         : OK"
+
 ###############################################################################
 # GitHub numeric IDs.
 #
@@ -113,12 +151,14 @@ echo "==> Creating Terraform state backend"
 echo "    resource group  : $STATE_RG"
 echo "    storage account : $STATE_SA"
 
-az group create --name "$STATE_RG" --location westeurope --output none
+az group create --name "$STATE_RG" --location westeurope \
+  --subscription "$SUBSCRIPTION_ID" --output none
 
-if ! az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" >/dev/null 2>&1; then
+if ! az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" --subscription "$SUBSCRIPTION_ID" >/dev/null 2>&1; then
   az storage account create \
     --name "$STATE_SA" \
     --resource-group "$STATE_RG" \
+    --subscription "$SUBSCRIPTION_ID" \
     --location westeurope \
     --sku Standard_LRS \
     --kind StorageV2 \
@@ -134,6 +174,7 @@ fi
 az storage account blob-service-properties update \
   --account-name "$STATE_SA" \
   --resource-group "$STATE_RG" \
+  --subscription "$SUBSCRIPTION_ID" \
   --enable-versioning true \
   --output none
 
@@ -148,7 +189,7 @@ az role assignment create \
   --assignee-object-id "$SP_OBJECT_ID" \
   --assignee-principal-type ServicePrincipal \
   --role "Storage Blob Data Contributor" \
-  --scope "$(az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" --query id -o tsv)" \
+  --scope "$(az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" --subscription "$SUBSCRIPTION_ID" --query id -o tsv)" \
   --output none 2>/dev/null || true
 echo "    state access granted to deploy identity"
 
