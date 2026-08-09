@@ -28,19 +28,6 @@ output "log_analytics_workspace" {
   description = "Central log sink receiving Key Vault and evidence-vault audit events."
 }
 
-output "budget" {
-  description = "FinOps guardrail summary. Alerting only - Azure budgets do not cap spend."
-  value = {
-    name            = azurerm_consumption_budget_subscription.demo_ceiling.name
-    amount          = var.budget_amount
-    scope           = "subscription"
-    period_start    = local.budget_start
-    alert_thresholds = "50% / 80% / 100% actual, 90% forecasted"
-    recipients      = var.budget_alert_emails
-    enforcement     = "DETECTIVE ONLY - alerts do not stop spending. See docs/FINOPS.md"
-  }
-}
-
 output "deployment_note" {
   description = "Reminder that this is not the target architecture."
   value       = <<-EOT
@@ -48,5 +35,7 @@ output "deployment_note" {
     Public network access is enabled and redundancy is reduced so the stack is
     reachable from a GitHub-hosted runner and costs under EUR 2/month.
     Deviations are recorded in docs/EXCEPTIONS.md (EXC-001 to EXC-005).
+    The subscription budget is NOT managed here - it is created by
+    scripts/bootstrap.sh so that it outlives this deployment.
   EOT
 }

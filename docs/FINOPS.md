@@ -33,7 +33,7 @@ Everything below follows from taking that distinction seriously.
 | LRS instead of GRS on evidence storage | **Preventive** | Yes | Halves storage replication cost |
 | Standard instead of Premium Key Vault | **Preventive** | Yes | Avoids HSM pricing |
 | Storage lifecycle policy — tier to cool at 30d, delete at 365d | **Preventive** | Yes | Bounds unbounded growth |
-| Subscription budget, 4 thresholds | **Detective** | Yes | Alerts only |
+| Subscription budget, 4 thresholds | **Detective** | Yes — created at bootstrap, survives teardown | Alerts only |
 | Resource tagging for allocation | **Informative** | Yes | Attribution, not restriction |
 | Budget webhook → automated teardown | **Corrective** | **No** — documented below | Would enforce |
 
@@ -44,9 +44,32 @@ the money is committed.
 
 ---
 
+## Where the guardrail lives, and why it moved
+
+The budget was originally defined in `terraform/minimal`, alongside the demo
+workload. That was wrong, and the reason is lifecycle rather than correctness.
+
+Coupling the guardrail to the workload meant the budget only existed **after**
+the demo was deployed, and `terraform destroy` removed it. So the spending
+alarm was absent during exactly the two windows where it matters most: before
+the first deployment, when a misconfiguration could provision something
+expensive, and after teardown, when orphaned resources are the classic source
+of a surprise invoice.
+
+A guardrail should be established before the thing it guards and should outlive
+it. The budget is now created by `scripts/bootstrap.sh`, with the other
+subscription-level prerequisites — RBAC and the Terraform state backend — that
+exist once and persist across every deployment.
+
+The trade-off is that it is no longer Terraform-managed, so there is no state
+tracking drift on it. `bootstrap.sh` is idempotent and re-running reasserts the
+budget, which is an acceptable substitute at this scale. A larger estate would
+put subscription guardrails in their own long-lived Terraform workspace rather
+than in a script.
+
 ## What is deployed
 
-`terraform/minimal/budget.tf`:
+Created by `scripts/bootstrap.sh`:
 
 - **Scope:** the whole subscription, not the demo resource group. A
   resource-group budget would miss the Terraform state storage account and
@@ -61,8 +84,15 @@ retrospective by definition — at 100% actual the money is already gone. The
 forecast alert fires on Azure's projection of month-end spend, typically days
 earlier, while there is still time to act.
 
-Alerts route through an Action Group rather than direct email, so adding an
-enforcement path later is a change to one resource.
+Verify it exists:
+
+```bash
+az consumption budget list --output table
+```
+
+An empty result means the budget was never created — most likely `bootstrap.sh`
+did not complete. Note this command is flagged preview; the portal view under
+**Cost Management + Billing → Budgets** is authoritative.
 
 ---
 

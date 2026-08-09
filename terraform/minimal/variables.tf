@@ -38,57 +38,6 @@ variable "evidence_retention_days" {
   default     = 30
 }
 
-###############################################################################
-# FinOps
-###############################################################################
-
-variable "budget_amount" {
-  type        = number
-  description = <<-EOT
-    Monthly subscription spending ceiling.
-
-    Denominated in the BILLING CURRENCY of the subscription, not a currency you
-    choose here. A EUR-billed subscription reads this as EUR 20, not USD 20 -
-    Azure budgets have no currency field.
-
-    This is an alert threshold, not a hard cap. See budget.tf.
-  EOT
-  default     = 20
-
-  validation {
-    condition     = var.budget_amount > 0 && var.budget_amount <= 1000
-    error_message = "budget_amount must be between 1 and 1000. A demo environment should never need more."
-  }
-}
-
-variable "budget_alert_emails" {
-  type        = list(string)
-  description = "Addresses that receive budget threshold alerts. At least one is required, or the budget is unmonitored and therefore pointless."
-
-  validation {
-    condition     = length(var.budget_alert_emails) > 0
-    error_message = "Provide at least one alert email. A budget nobody is notified about is not a control."
-  }
-}
-
-variable "budget_start_date" {
-  type        = string
-  description = <<-EOT
-    Budget period start, RFC3339, first day of a month (e.g. 2026-08-01T00:00:00Z).
-    Leave null to use the current month.
-
-    Pin this once the budget exists: the default derives from timestamp(), and
-    although time_period is in ignore_changes, a pinned value keeps plans
-    deterministic and readable.
-  EOT
-  default     = null
-
-  validation {
-    condition     = var.budget_start_date == null || can(regex("^[0-9]{4}-[0-9]{2}-01T00:00:00Z$", var.budget_start_date))
-    error_message = "budget_start_date must be the first day of a month in RFC3339 form, e.g. 2026-08-01T00:00:00Z."
-  }
-}
-
 variable "allowed_ip_ranges" {
   type        = list(string)
   description = <<-EOT

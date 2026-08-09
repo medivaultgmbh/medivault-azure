@@ -11,7 +11,7 @@ Prerequisites: Azure CLI, Terraform ≥ 1.6, `jq`, and subscription **Owner**
 
 ```bash
 az login
-./scripts/bootstrap.sh medivaultgmbh medivault-azure
+COST_ALERT_EMAIL=you@example.com ./scripts/bootstrap.sh medivaultgmbh medivault-azure
 ```
 
 This creates, idempotently:
@@ -44,12 +44,11 @@ repository variables (not secrets; none of them are sensitive):
 | `AZURE_SUBSCRIPTION_ID` | bootstrap output |
 | `TFSTATE_RESOURCE_GROUP` | bootstrap output |
 | `TFSTATE_STORAGE_ACCOUNT` | bootstrap output |
-| `COST_ALERT_EMAIL` | **you choose** — required, deploy aborts without it |
-| `BUDGET_AMOUNT` | optional, defaults to `20` |
 
-> The deploy job checks `COST_ALERT_EMAIL` before touching Terraform and fails
-> fast if it's empty. A budget with no recipient isn't a control, so it's
-> treated as a hard requirement rather than a default.
+> The subscription budget is no longer a repository variable — it is created by
+> `scripts/bootstrap.sh`, which reads the optional environment variables
+> `COST_ALERT_EMAIL` (defaults to your signed-in account) and `BUDGET_AMOUNT`
+> (defaults to 20).
 
 **Settings → Environments** — create one environment named `medivault-demo`.
 Leave it empty; repository variables are inherited.
@@ -87,8 +86,6 @@ Deploys, for under €2/month:
 - Evidence vault storage — versioned, retained, Entra-ID-auth only
 - Lifecycle management policy (GDPR Art. 5(1)(e))
 - Diagnostic settings feeding Key Vault and storage audit events to Log Analytics
-- Subscription budget with 50/80/100% actual and 90% forecasted alerts
-
 > **The budget alerts; it does not cap.** Azure has no hard spending limit on
 > pay-as-you-go. The real protection is architectural — the expensive components
 > simply aren't deployed — plus the 1 GB/day Log Analytics ingest cap. See

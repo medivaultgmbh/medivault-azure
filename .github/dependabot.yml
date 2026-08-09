@@ -37,6 +37,17 @@ updates:
     labels: ["dependencies", "terraform"]
     commit-message:
       prefix: "chore(deps)"
+    # Major provider bumps are breaking and must be a deliberate, tested
+    # migration - not an automated PR. azurerm 3.x -> 4.x requires
+    # subscription_id on the provider block and renames resource attributes;
+    # merging it unreviewed would break the policy gate and the deployment.
+    #
+    # Minor and patch updates still flow through automatically.
+    ignore:
+      - dependency-name: "hashicorp/azurerm"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "hashicorp/azuread"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "terraform"
     directory: "/terraform/minimal"
@@ -47,6 +58,17 @@ updates:
     labels: ["dependencies", "terraform"]
     commit-message:
       prefix: "chore(deps)"
+    # Major provider bumps are breaking and must be a deliberate, tested
+    # migration - not an automated PR. azurerm 3.x -> 4.x requires
+    # subscription_id on the provider block and renames resource attributes;
+    # merging it unreviewed would break the policy gate and the deployment.
+    #
+    # Minor and patch updates still flow through automatically.
+    ignore:
+      - dependency-name: "hashicorp/azurerm"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "hashicorp/azuread"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "terraform"
     directory: "/terraform/baseline"
@@ -57,3 +79,14 @@ updates:
     labels: ["dependencies", "terraform"]
     commit-message:
       prefix: "chore(deps)"
+    # Major provider bumps are breaking and must be a deliberate, tested
+    # migration - not an automated PR. azurerm 3.x -> 4.x requires
+    # subscription_id on the provider block and renames resource attributes;
+    # merging it unreviewed would break the policy gate and the deployment.
+    #
+    # Minor and patch updates still flow through automatically.
+    ignore:
+      - dependency-name: "hashicorp/azurerm"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "hashicorp/azuread"
+        update-types: ["version-update:semver-major"]

@@ -194,6 +194,84 @@ az role assignment create \
 echo "    state access granted to deploy identity"
 
 ###############################################################################
+# FinOps guardrail - subscription budget
+#
+# WHY THIS LIVES IN BOOTSTRAP RATHER THAN IN TERRAFORM
+#
+# The budget was originally defined in terraform/minimal alongside the demo
+# workload. That coupled the guardrail to the thing it guards: the budget only
+# existed once the demo was deployed, and `terraform destroy` removed it. A
+# spending alarm that disappears when you tear down the workload is backwards -
+# the window where you most want it is exactly when resources are being created
+# and destroyed.
+#
+# It belongs with the other subscription-level prerequisites: created once,
+# before anything is deployed, and outliving every deployment.
+#
+# Created via `az rest` rather than `az consumption budget create`, which is
+# still flagged preview and has an awkward surface for subscription scope.
+#
+# IMPORTANT: an Azure budget ALERTS. It does not cap. Pay-as-you-go has no hard
+# spending limit. See docs/FINOPS.md.
+###############################################################################
+BUDGET_NAME="medivault-subscription-ceiling"
+BUDGET_AMOUNT="${BUDGET_AMOUNT:-20}"
+BUDGET_EMAIL="${COST_ALERT_EMAIL:-$ACCOUNT}"
+
+# Budgets must start on the first of a month; end date is a year out.
+BUDGET_START=$(date -u +%Y-%m-01)
+BUDGET_END=$(date -u -v+1y +%Y-%m-01 2>/dev/null || date -u -d "+1 year" +%Y-%m-01)
+
+echo
+echo "==> Creating subscription budget"
+echo "    name    : $BUDGET_NAME"
+echo "    amount  : $BUDGET_AMOUNT (subscription billing currency)"
+echo "    alerts  : $BUDGET_EMAIL"
+
+BUDGET_BODY=$(cat <<JSON
+{
+  "properties": {
+    "category": "Cost",
+    "amount": ${BUDGET_AMOUNT},
+    "timeGrain": "Monthly",
+    "timePeriod": {
+      "startDate": "${BUDGET_START}T00:00:00Z",
+      "endDate": "${BUDGET_END}T00:00:00Z"
+    },
+    "notifications": {
+      "actual_50": {
+        "enabled": true, "operator": "GreaterThanOrEqualTo", "threshold": 50,
+        "contactEmails": ["${BUDGET_EMAIL}"], "thresholdType": "Actual"
+      },
+      "actual_80": {
+        "enabled": true, "operator": "GreaterThanOrEqualTo", "threshold": 80,
+        "contactEmails": ["${BUDGET_EMAIL}"], "thresholdType": "Actual"
+      },
+      "actual_100": {
+        "enabled": true, "operator": "GreaterThanOrEqualTo", "threshold": 100,
+        "contactEmails": ["${BUDGET_EMAIL}"], "thresholdType": "Actual"
+      },
+      "forecast_90": {
+        "enabled": true, "operator": "GreaterThanOrEqualTo", "threshold": 90,
+        "contactEmails": ["${BUDGET_EMAIL}"], "thresholdType": "Forecasted"
+      }
+    }
+  }
+}
+JSON
+)
+
+if az rest --method put \
+     --url "https://management.azure.com/subscriptions/${SUBSCRIPTION_ID}/providers/Microsoft.Consumption/budgets/${BUDGET_NAME}?api-version=2023-05-01" \
+     --body "$BUDGET_BODY" \
+     --output none 2>/dev/null; then
+  echo "    created (alerts at 50%, 80%, 100% actual and 90% forecast)"
+else
+  echo "    WARNING: budget creation failed - create it in the portal under"
+  echo "             Cost Management + Billing > Budgets. Not fatal."
+fi
+
+###############################################################################
 # Federated credentials
 ###############################################################################
 add_fic() {
