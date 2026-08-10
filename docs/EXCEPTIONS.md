@@ -58,10 +58,28 @@ academic demonstration, both on cost and on setup time.
 | **EXC-003** | GDPR Art. 32 — HSM-backed CMK | Key Vault `standard` SKU, `RSA` key instead of `premium` / `RSA-HSM` | Premium tier adds cost for no demonstrable difference in an academic demo | 4096-bit key size retained; 90-day automatic rotation policy **identical to production** | Change `sku_name` to `premium` and `key_type` to `RSA-HSM` |
 | **EXC-004** | Part 1 BC/DR — geo-redundancy | Evidence storage `LRS` instead of `GRS` | GRS roughly doubles storage cost; no DR test is in scope | Versioning + 30-day soft delete retained; evidence also held as a GitHub artifact for 90 days, giving an independent second copy | Change `account_replication_type` to `GRS` |
 | **EXC-005** | GDPR Art. 32 — CMK encryption of evidence at rest | Evidence storage uses Microsoft-managed keys | CMK on storage requires a managed identity with key access plus a private-endpoint-reachable vault; circular with EXC-001 | Platform encryption (AES-256) still applies at rest; the CMK itself is still deployed and rotating, so the control is demonstrated on the Key Vault | Add `customer_managed_key` block once EXC-001 is closed |
-| **EXC-007** | GDPR Art. 32 / ISO A.8.15 — tamper-proof evidence | Evidence vault has versioning, soft delete and signed bundles, but no locked immutability policy | A locked time-based retention policy cannot be shortened or removed for its full duration by anyone, including Microsoft support. Not appropriate in a demonstration repository that will be torn down | Cosign signatures make modification detectable; versioning and 90-day soft delete retain prior copies; all access logged to Log Analytics | Add `azurerm_storage_container_immutability_policy` with `locked = true` once retention requirements are contractually fixed |
+| **EXC-007** | GDPR Art. 32 / ISO A.8.15 — tamper-proof evidence *(also asserted in Part 2 §6)* | Evidence vault has versioning, soft delete and signed bundles, but no locked immutability policy | A locked time-based retention policy cannot be shortened or removed for its full duration by anyone, including Microsoft support. Not appropriate in a demonstration repository that will be torn down | Cosign signatures make modification detectable; versioning and 90-day soft delete retain prior copies; all access logged to Log Analytics | Add `azurerm_storage_container_immutability_policy` with `locked = true` once retention requirements are contractually fixed |
 | **EXC-006** | Part 2 — workload isolation | Cosmos DB, Functions, API Management, VNet and private endpoints not deployed | ~EUR 235/month of the ~EUR 240 total; not required to demonstrate governance controls | Full definitions remain in `terraform/` and are planned and policy-gated on every commit — the code is verified even though it is not run | Deploy `terraform/` with a funded subscription |
 
 ---
+
+### Note on EXC-007 and the Part 2 brief
+
+Part 2 §6 describes the evidence vault as an "immutable vault" with an
+"immutability policy". That control is not implemented: the storage account has
+versioning, soft delete and lifecycle management, but no locked time-based
+retention policy.
+
+The brief has been submitted and is not being retrospectively edited — the
+version in `pdf/` is the record of what was assessed. This entry exists so the
+repository reconciles rather than contradicts itself: the Terraform comments,
+this register and the report now tell a consistent story, with the gap named in
+the two places that remain editable.
+
+Worth stating plainly, because it is the same error twice. A control asserted in
+a compliance document and absent from the implementation is precisely the failure
+the policy gate exists to prevent — and the gate could not catch it, because the
+claim lived in prose rather than in code.
 
 ## Risk acceptance
 
