@@ -52,6 +52,26 @@ resource "azurerm_key_vault_access_policy" "pipeline" {
   ]
 }
 
+# Access policy for the workload managed identity.
+#
+# This vault uses the access policy model (enable_rbac_authorization defaults to
+# false). In that mode an RBAC role assignment such as "Key Vault Crypto User"
+# is silently inert: it appears in the plan, applies without error, and grants
+# nothing. Customer-managed key encryption on ADLS Gen2 and the evidence vault
+# then fails at apply with a permissions error that points at the storage
+# account rather than at the vault.
+#
+# Get, WrapKey and UnwrapKey are the minimum set Azure Storage requires to use a
+# customer-managed key. No write permissions: the identity consumes the key, it
+# does not manage it.
+resource "azurerm_key_vault_access_policy" "workload" {
+  key_vault_id = azurerm_key_vault.grc.id
+  tenant_id    = data.azurerm_client_config.current.tenant_id
+  object_id    = var.workload_identity_principal_id
+
+  key_permissions = ["Get", "WrapKey", "UnwrapKey"]
+}
+
 # Customer-managed key for GDPR-restricted (healthcare-derived) data stores.
 # AWS equivalent: aws_kms_key.phi with enable_key_rotation = true.
 resource "azurerm_key_vault_key" "gdpr_restricted" {

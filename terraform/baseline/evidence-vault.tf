@@ -1,13 +1,27 @@
 ######################################################################
-# Evidence Vault — immutable storage for CI/CD audit artefacts.
+# Evidence Vault — retained storage for CI/CD audit artefacts.
 #
 # AWS equivalent: aws_s3_bucket.evidence_vault with object_lock_enabled = true
 #
-# Azure Blob Storage immutability policies provide the same WORM (Write Once,
-# Read Many) guarantee as S3 Object Lock. Combined with versioning, private
-# endpoints, and CMK encryption, this vault stores signed deployment evidence
-# bundles (terraform plan.json, OPA results, cosign attestations) in a
-# tamper-evident, legally defensible format.
+# WHAT THIS DOES AND DOES NOT PROVIDE
+#
+# This vault gives versioning, soft-delete retention, private-endpoint access,
+# CMK encryption and lifecycle management. Combined with cosign signatures on
+# the evidence bundles themselves, that is tamper-EVIDENT: modification is
+# detectable.
+#
+# It is NOT tamper-PROOF. Azure Blob immutability (a time-based retention policy
+# in the Locked state, the equivalent of S3 Object Lock) is not configured here,
+# so a sufficiently privileged principal could still delete evidence. An earlier
+# revision of this file claimed WORM behaviour in comments while implementing
+# only lifecycle tiering — the claim was wrong and has been corrected rather
+# than quietly dropped.
+#
+# Closing the gap means adding azurerm_storage_container_immutability_policy
+# with locked = true. That is deliberately not done in a demonstration
+# repository: a locked policy cannot be shortened or removed for its full
+# retention period, by anyone, including Microsoft support. See
+# docs/EXCEPTIONS.md (EXC-007).
 #
 # GDPR / NIS2 controls satisfied:
 #   GDPR Art. 32 — integrity of processing records
@@ -28,7 +42,8 @@ resource "azurerm_storage_account" "evidence_vault" {
 
   min_tls_version = "TLS1_2"
 
-  # Versioning is required for immutability policies to take effect.
+  # Versioning: retains prior blob versions, and is a prerequisite if a
+  # version-level immutability policy is added later.
   blob_properties {
     versioning_enabled = true
 
@@ -58,10 +73,9 @@ resource "azurerm_storage_container" "evidence" {
   container_access_type = "private"
 }
 
-# Immutability policy on the evidence container.
-# AWS equivalent: aws_s3_bucket_object_lock_configuration with GOVERNANCE retention.
-# Azure equivalent: time-based retention policy in "Locked" state prevents
-# deletion or overwrite of blobs for the retention period, even by account owners.
+# Lifecycle management — tiering and retention, NOT immutability.
+# This controls storage cost and enforces GDPR Art. 5(1)(e) storage limitation.
+# It does not prevent deletion; see the header note.
 resource "azurerm_storage_management_policy" "evidence_vault" {
   storage_account_id = azurerm_storage_account.evidence_vault.id
 
@@ -77,7 +91,6 @@ resource "azurerm_storage_management_policy" "evidence_vault" {
     actions {
       base_blob {
         # Tiered to cool after 30 days, archive after 90 days.
-        # Deletion is blocked by the immutability policy below.
         tier_to_cool_after_days_since_modification_greater_than    = 30
         tier_to_archive_after_days_since_modification_greater_than = 90
       }

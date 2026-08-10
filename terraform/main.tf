@@ -101,13 +101,14 @@ resource "azurerm_user_assigned_identity" "workload" {
 module "grc_baseline" {
   source = "./baseline"
 
-  resource_group_name  = azurerm_resource_group.main.name
-  location             = azurerm_resource_group.main.location
-  name_prefix          = local.name_prefix
-  suffix               = local.suffix
-  private_subnet_ids   = [azurerm_subnet.private.id]
-  workload_identity_id = azurerm_user_assigned_identity.workload.id
-  tags                 = local.tags
+  resource_group_name            = azurerm_resource_group.main.name
+  location                       = azurerm_resource_group.main.location
+  name_prefix                    = local.name_prefix
+  suffix                         = local.suffix
+  private_subnet_ids             = [azurerm_subnet.private.id]
+  workload_identity_id           = azurerm_user_assigned_identity.workload.id
+  workload_identity_principal_id = azurerm_user_assigned_identity.workload.principal_id
+  tags                           = local.tags
 }
 
 ######################################################################
@@ -364,7 +365,7 @@ resource "azurerm_private_endpoint" "cosmos" {
 # Managed identity roles are narrowly scoped following least-privilege:
 #   "Storage Blob Data Contributor" on the dataset account only
 #   Built-in Cosmos DB data contributor on the intake account only
-#   Key Vault Crypto User on the GRC key vault only
+#   Key Vault: granted via access policy in the baseline module (see note below)
 ######################################################################
 
 resource "azurerm_role_assignment" "workload_adls" {
@@ -381,11 +382,11 @@ resource "azurerm_cosmosdb_sql_role_assignment" "workload_cosmos" {
   scope               = azurerm_cosmosdb_account.intake.id
 }
 
-resource "azurerm_role_assignment" "workload_keyvault_crypto" {
-  scope                = module.grc_baseline.gdpr_key_vault_id
-  role_definition_name = "Key Vault Crypto User"
-  principal_id         = azurerm_user_assigned_identity.workload.principal_id
-}
+# NOTE: Key Vault access for the workload identity is granted by an ACCESS
+# POLICY in the baseline module, not by a role assignment here. This vault does
+# not enable RBAC authorization, and an azurerm_role_assignment against an
+# access-policy vault grants nothing while appearing to succeed. See
+# baseline/key-vault.tf.
 
 ######################################################################
 # Azure Functions — intake handler (Python 3.12).

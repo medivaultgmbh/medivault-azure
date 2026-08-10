@@ -28,6 +28,18 @@ variable "workload_identity_id" {
   description = "Resource ID of the User-Assigned Managed Identity that holds CMK access to Key Vault."
 }
 
+variable "workload_identity_principal_id" {
+  type        = string
+  description = <<-EOT
+    Principal (object) ID of the workload managed identity.
+
+    Required because this vault uses the ACCESS POLICY permission model, not
+    RBAC. An azurerm_role_assignment granting "Key Vault Crypto User" has no
+    effect on an access-policy vault, so the identity must be granted key
+    permissions here or customer-managed key encryption fails at apply time.
+  EOT
+}
+
 variable "security_ops_email" {
   type        = string
   description = "Email address for the Security Operations team to receive monitoring alerts."

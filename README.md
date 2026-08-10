@@ -109,25 +109,21 @@ medivault-azure/
 ### 1. Create Terraform state backend
 
 ```bash
-# Create a resource group and storage account for Terraform state.
-# Run once before terraform init. Handled automatically by scripts/bootstrap.sh.
+# The Terraform state backend is created by scripts/bootstrap.sh, which derives
+# a globally unique storage account name from the subscription ID and prints it
+# along with the other values you need.
 
-az group create \
-  --name medivault-tfstate-rg \
-  --location westeurope
+./scripts/bootstrap.sh medivaultgmbh medivault-azure
+```
 
-az storage account create \
-  --name medivaulttfstate \
-  --resource-group medivault-tfstate-rg \
-  --location westeurope \
-  --sku Standard_GRS \
-  --min-tls-version TLS1_2 \
-  --allow-blob-public-access false
+Then initialise with partial backend config, using the names bootstrap printed:
 
-az storage container create \
-  --name tfstate \
-  --account-name medivaulttfstate \
-  --auth-mode login
+```bash
+cd terraform
+terraform init \
+  -backend-config="resource_group_name=medivault-tfstate-rg" \
+  -backend-config="storage_account_name=<from bootstrap output>" \
+  -backend-config="container_name=tfstate"
 ```
 
 ### 2. Configure OIDC federated credential

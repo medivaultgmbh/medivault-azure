@@ -58,6 +58,7 @@ academic demonstration, both on cost and on setup time.
 | **EXC-003** | GDPR Art. 32 — HSM-backed CMK | Key Vault `standard` SKU, `RSA` key instead of `premium` / `RSA-HSM` | Premium tier adds cost for no demonstrable difference in an academic demo | 4096-bit key size retained; 90-day automatic rotation policy **identical to production** | Change `sku_name` to `premium` and `key_type` to `RSA-HSM` |
 | **EXC-004** | Part 1 BC/DR — geo-redundancy | Evidence storage `LRS` instead of `GRS` | GRS roughly doubles storage cost; no DR test is in scope | Versioning + 30-day soft delete retained; evidence also held as a GitHub artifact for 90 days, giving an independent second copy | Change `account_replication_type` to `GRS` |
 | **EXC-005** | GDPR Art. 32 — CMK encryption of evidence at rest | Evidence storage uses Microsoft-managed keys | CMK on storage requires a managed identity with key access plus a private-endpoint-reachable vault; circular with EXC-001 | Platform encryption (AES-256) still applies at rest; the CMK itself is still deployed and rotating, so the control is demonstrated on the Key Vault | Add `customer_managed_key` block once EXC-001 is closed |
+| **EXC-007** | GDPR Art. 32 / ISO A.8.15 — tamper-proof evidence | Evidence vault has versioning, soft delete and signed bundles, but no locked immutability policy | A locked time-based retention policy cannot be shortened or removed for its full duration by anyone, including Microsoft support. Not appropriate in a demonstration repository that will be torn down | Cosign signatures make modification detectable; versioning and 90-day soft delete retain prior copies; all access logged to Log Analytics | Add `azurerm_storage_container_immutability_policy` with `locked = true` once retention requirements are contractually fixed |
 | **EXC-006** | Part 2 — workload isolation | Cosmos DB, Functions, API Management, VNet and private endpoints not deployed | ~EUR 235/month of the ~EUR 240 total; not required to demonstrate governance controls | Full definitions remain in `terraform/` and are planned and policy-gated on every commit — the code is verified even though it is not run | Deploy `terraform/` with a funded subscription |
 
 ---
@@ -100,6 +101,19 @@ section, which records the expression whether or not it resolves.
 A false positive is more corrosive than a false negative here. A gate that
 blocks correct code gets bypassed, and once bypassing is normal the gate is
 decoration.
+
+**Access-policy vaults silently ignore RBAC grants.** The reference architecture
+granted the workload identity `Key Vault Crypto User` as a role assignment, on a
+Key Vault that uses the access-policy permission model. In that mode the
+assignment is inert: it plans, applies without error, and grants nothing.
+Customer-managed key encryption would have failed at apply with an error naming
+the storage account rather than the vault.
+
+Neither `validate` nor `plan` can catch this — authorisation is only evaluated at
+apply, and the resource itself is syntactically valid. It was found by review,
+not by the pipeline, which bounds what a plan-time gate can claim: it verifies
+that resources are well-formed and policy-compliant, not that they will
+successfully authorise one another.
 
 **Unresolvable scopes weaken the RBAC rule.** `gdpr_rbac_no_wildcard` inspects
 `scope` on role assignments, but in this configuration `scope` is a reference to
