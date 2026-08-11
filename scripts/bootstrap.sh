@@ -269,6 +269,9 @@ fi
 set +e
 STATE_RG="medivault-tfstate-rg"
 STATE_SA="mvtfstate$(echo -n "$SUBSCRIPTION_ID" | sha256sum | cut -c1-12)"
+# Override if this region refuses new resources. scripts/create-state-backend.sh
+# probes candidates automatically and is the better tool when that happens.
+STATE_LOCATION="${STATE_LOCATION:-germanywestcentral}"
 
 echo
 echo "==> Creating Terraform state backend"
@@ -279,7 +282,7 @@ echo "    storage account : $STATE_SA"
 # makes account creation fail. Registering is idempotent and cheap.
 az provider register --namespace Microsoft.Storage --subscription "$SUBSCRIPTION_ID" --wait 2>/dev/null || true
 
-az group create --name "$STATE_RG" --location westeurope \
+az group create --name "$STATE_RG" --location "${STATE_LOCATION:-germanywestcentral}" \
   --subscription "$SUBSCRIPTION_ID" --output none
 
 if az group show --name "$STATE_RG" --subscription "$SUBSCRIPTION_ID" >/dev/null 2>&1; then
@@ -294,7 +297,7 @@ if ! az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" --s
     --name "$STATE_SA" \
     --resource-group "$STATE_RG" \
     --subscription "$SUBSCRIPTION_ID" \
-    --location westeurope \
+    --location "${STATE_LOCATION:-germanywestcentral}" \
     --sku Standard_LRS \
     --kind StorageV2 \
     --min-tls-version TLS1_2 \

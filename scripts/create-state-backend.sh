@@ -16,6 +16,19 @@ set -euo pipefail
 SUBSCRIPTION_ID="${SUBSCRIPTION_ID:-$(az account show --query id -o tsv)}"
 APP_NAME="TF.MediVaultDeploy.ServicePrincipal"
 STATE_RG="medivault-tfstate-rg"
+
+# Region candidates, in preference order.
+#
+# Azure refuses new resources in regions that are at capacity for new
+# customers ("RequestDisallowedByAzure ... not accepting new customers"), and
+# which regions those are is not published and changes over time. So the region
+# is probed rather than assumed. All candidates are EU, which the GDPR data
+# residency requirement makes non-negotiable - the fallback widens the region,
+# never the jurisdiction.
+#
+# Germany West Central (Frankfurt) leads: MediVault is a German entity, so
+# German residency is the strongest position, not merely an adequate one.
+REGIONS=(germanywestcentral swedencentral francecentral northeurope westeurope)
 STATE_SA="mvtfstate$(echo -n "$SUBSCRIPTION_ID" | sha256sum | cut -c1-12)"
 
 echo "==> Target"
@@ -31,30 +44,53 @@ az provider show --namespace Microsoft.Storage --subscription "$SUBSCRIPTION_ID"
   --query registrationState -o tsv | sed 's/^/    state: /'
 
 echo
-echo "==> Resource group"
-az group create --name "$STATE_RG" --location westeurope \
-  --subscription "$SUBSCRIPTION_ID" --output none
-echo "    ok"
+echo "==> Finding an EU region that accepts new resources"
 
-echo
-echo "==> Storage account"
-if az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" \
-     --subscription "$SUBSCRIPTION_ID" >/dev/null 2>&1; then
-  echo "    already exists"
-else
-  # No 2>/dev/null and no || true: if this fails, the error is the whole point.
-  az storage account create \
-    --name "$STATE_SA" \
-    --resource-group "$STATE_RG" \
-    --subscription "$SUBSCRIPTION_ID" \
-    --location westeurope \
-    --sku Standard_LRS \
-    --kind StorageV2 \
-    --min-tls-version TLS1_2 \
-    --allow-blob-public-access false \
-    --output none
-  echo "    created"
+LOCATION=""
+for r in "${REGIONS[@]}"; do
+  printf '    %-22s ' "$r"
+
+  az group create --name "$STATE_RG" --location "$r" \
+    --subscription "$SUBSCRIPTION_ID" --output none 2>/dev/null || true
+
+  if az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" \
+       --subscription "$SUBSCRIPTION_ID" >/dev/null 2>&1; then
+    echo "account already exists here"
+    LOCATION="$r"
+    break
+  fi
+
+  ERR=$(az storage account create \
+        --name "$STATE_SA" \
+        --resource-group "$STATE_RG" \
+        --subscription "$SUBSCRIPTION_ID" \
+        --location "$r" \
+        --sku Standard_LRS \
+        --kind StorageV2 \
+        --min-tls-version TLS1_2 \
+        --allow-blob-public-access false \
+        --output none 2>&1) && { echo "created"; LOCATION="$r"; break; }
+
+  case "$ERR" in
+    *RequestDisallowedByAzure*|*locationineligible*|*NotAvailableForSubscription*)
+      echo "not accepting new customers - trying next" ;;
+    *)
+      # Anything else is a real error and must not be retried into silence.
+      echo "FAILED"
+      echo
+      echo "$ERR" >&2
+      exit 1 ;;
+  esac
+done
+
+if [ -z "$LOCATION" ]; then
+  echo
+  echo "ERROR: no candidate EU region accepted the request." >&2
+  echo "Check available regions:  az account list-locations --query \"[?metadata.geography=='Europe'].name\" -o tsv" >&2
+  exit 1
 fi
+
+echo "    using: $LOCATION"
 
 echo
 echo "==> Blob versioning (protects against a truncated state write)"
@@ -88,8 +124,11 @@ az role assignment list --assignee "$APP_ID" --scope "$SA_ID" \
 
 echo
 echo "════════════════════════════════════════════════════════════════════"
-echo " State backend ready: $STATE_SA"
+echo " State backend ready: $STATE_SA  ($LOCATION)"
 echo "════════════════════════════════════════════════════════════════════"
+echo
+echo "The demo deployment must use the same region. Set it as a repo variable:"
+echo "  gh variable set AZURE_LOCATION --repo medivaultgmbh/medivault-azure --body $LOCATION"
 echo
 echo "Next:"
 echo "  gh workflow run 'GRC Gate' --repo medivaultgmbh/medivault-azure -f deploy_demo=true"

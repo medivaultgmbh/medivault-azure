@@ -60,8 +60,23 @@ academic demonstration, both on cost and on setup time.
 | **EXC-005** | GDPR Art. 32 — CMK encryption of evidence at rest | Evidence storage uses Microsoft-managed keys | CMK on storage requires a managed identity with key access plus a private-endpoint-reachable vault; circular with EXC-001 | Platform encryption (AES-256) still applies at rest; the CMK itself is still deployed and rotating, so the control is demonstrated on the Key Vault | Add `customer_managed_key` block once EXC-001 is closed |
 | **EXC-007** | GDPR Art. 32 / ISO A.8.15 — tamper-proof evidence *(also asserted in Part 2 §6)* | Evidence vault has versioning, soft delete and signed bundles, but no locked immutability policy | A locked time-based retention policy cannot be shortened or removed for its full duration by anyone, including Microsoft support. Not appropriate in a demonstration repository that will be torn down | Cosign signatures make modification detectable; versioning and 90-day soft delete retain prior copies; all access logged to Log Analytics | Add `azurerm_storage_container_immutability_policy` with `locked = true` once retention requirements are contractually fixed |
 | **EXC-006** | Part 2 — workload isolation | Cosmos DB, Functions, API Management, VNet and private endpoints not deployed | ~EUR 235/month of the ~EUR 240 total; not required to demonstrate governance controls | Full definitions remain in `terraform/` and are planned and policy-gated on every commit — the code is verified even though it is not run | Deploy `terraform/` with a funded subscription |
+| **EXC-008** | Parts 1-2 — West Europe primary region | The demo governance plane deploys to Germany West Central (Frankfurt), not West Europe | Azure refused new resources in West Europe for this subscription: `RequestDisallowedByAzure - the selected region is currently not accepting new customers`. Region eligibility is set by Microsoft per subscription and is not published | Germany West Central is EU/EEA and is MediVault's own jurisdiction, so data residency is narrowed rather than weakened. The reference architecture in `terraform/` is unchanged and still targets West Europe with North Europe paired | None required. `scripts/create-state-backend.sh` probes EU regions in preference order and reports which was used |
+| **EXC-009** | Policy gate coverage | The Rego policies read `planned_values.root_module.resources` only, so the 15 resources inside the `./baseline` child module are not evaluated | Written before the configuration was modularised, and never revisited when `baseline/` was extracted. The 26 workload resources at root — Cosmos DB, storage, API Management, Functions — are evaluated normally | Inspected manually: all 15 baseline resources satisfy all seven policies (public access disabled, TLS 1.2, 90-day key rotation, CMK, no wildcard roles). The gap is coverage, not a concealed violation | Traverse `child_modules` recursively via `walk()` in a shared helper package, then re-run the negative test to confirm no regression |
 
 ---
+
+### Note on EXC-009 — how this was found
+
+EXC-009 surfaced while adding `gdpr_eu_data_residency.rego`, which itself
+surfaced while working around EXC-008. Three of the six original policies target
+resource types that exist in `baseline/`, which means those rules have been
+reporting success against a set of resources they never actually read.
+
+This is the same failure mode recorded in the Part 3 reflection: a control that
+emits a signal without the signal being connected to what it claims to measure.
+It is listed here rather than fixed immediately because the fix changes every
+policy at once, and doing that between a working gate and a recording deadline
+trades a known-good state for an unverified one.
 
 ### Note on EXC-007 and the Part 2 brief
 

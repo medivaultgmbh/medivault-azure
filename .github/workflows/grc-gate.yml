@@ -401,6 +401,10 @@ jobs:
           # "a Tenant ID must be configured when authenticating with OIDC".
           ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          # Region availability varies by subscription and changes over time, so
+          # it is a variable rather than a constant. create-state-backend.sh
+          # probes for a working EU region and prints the value to set here.
+          TF_VAR_location: ${{ vars.AZURE_LOCATION || 'germanywestcentral' }}
         run: |
           set -euo pipefail
 

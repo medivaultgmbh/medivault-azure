@@ -35,7 +35,10 @@ provider "azurerm" {
 
 variable "location" {
   type    = string
-  default = "westeurope"
+  # Deliberately outside the EU: trips gdpr_eu_data_residency, which was added
+  # after the demo had to move region. A fixture that does not exercise every
+  # policy quietly stops proving the gate works.
+  default = "eastus"
 }
 
 resource "azurerm_resource_group" "bad" {
