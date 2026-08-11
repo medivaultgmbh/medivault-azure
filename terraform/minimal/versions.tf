@@ -41,6 +41,10 @@ terraform {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.11"
+    }
   }
 }
 
@@ -58,4 +62,11 @@ provider "azurerm" {
       prevent_deletion_if_contains_resources = false
     }
   }
+
+  # The evidence vault sets shared_access_key_enabled = false, so account keys
+  # do not exist. Without this flag the provider still tries to list them to
+  # reach the blob data plane, and container creation fails with "waiting for
+  # the Data Plane for Storage Account". This tells it to authenticate to the
+  # data plane with the same Entra ID identity it uses for the control plane.
+  storage_use_azuread = true
 }

@@ -185,10 +185,21 @@ resource "azurerm_storage_account" "evidence_vault" {
   tags = local.tags
 }
 
+# Storage Blob Data Contributor is granted below, but Entra ID role assignments
+# are eventually consistent - typically 30 seconds, occasionally several
+# minutes. Terraform would otherwise create the container the moment the account
+# exists, using a role the data plane has not yet observed.
+resource "time_sleep" "wait_for_rbac" {
+  depends_on      = [azurerm_role_assignment.deployer_evidence_writer]
+  create_duration = "90s"
+}
+
 resource "azurerm_storage_container" "evidence" {
   name                  = "evidence-vault"
   storage_account_name  = azurerm_storage_account.evidence_vault.name
   container_access_type = "private"
+
+  depends_on = [time_sleep.wait_for_rbac]
 }
 
 # GDPR Art. 5(1)(e) - storage limitation. Evidence is tiered down and then
