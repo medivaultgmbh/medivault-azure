@@ -109,6 +109,13 @@ jobs:
         env:
           ARM_USE_OIDC: "true"
           ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          # The azurerm BACKEND authenticates independently of the provider.
+          # azure/login leaves the Azure CLI authenticated, which the provider
+          # picks up automatically, but the backend with use_oidc does not read
+          # CLI credentials - it needs these two explicitly, or init fails with
+          # "a Tenant ID must be configured when authenticating with OIDC".
+          ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
         run: |
           printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf
           echo "--- backend_override.tf ---"; cat backend_override.tf
@@ -122,6 +129,13 @@ jobs:
         env:
           ARM_USE_OIDC: "true"
           ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          # The azurerm BACKEND authenticates independently of the provider.
+          # azure/login leaves the Azure CLI authenticated, which the provider
+          # picks up automatically, but the backend with use_oidc does not read
+          # CLI credentials - it needs these two explicitly, or init fails with
+          # "a Tenant ID must be configured when authenticating with OIDC".
+          ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
         run: |
           terraform plan -out=tfplan -input=false
           terraform show -json tfplan > plan.json
@@ -245,6 +259,13 @@ jobs:
         env:
           ARM_USE_OIDC: "true"
           ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          # The azurerm BACKEND authenticates independently of the provider.
+          # azure/login leaves the Azure CLI authenticated, which the provider
+          # picks up automatically, but the backend with use_oidc does not read
+          # CLI credentials - it needs these two explicitly, or init fails with
+          # "a Tenant ID must be configured when authenticating with OIDC".
+          ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
         run: |
           # No backend block in the fixture, so this defaults to local state.
           terraform init -input=false
@@ -373,8 +394,25 @@ jobs:
         env:
           ARM_USE_OIDC: "true"
           ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          # The azurerm BACKEND authenticates independently of the provider.
+          # azure/login leaves the Azure CLI authenticated, which the provider
+          # picks up automatically, but the backend with use_oidc does not read
+          # CLI credentials - it needs these two explicitly, or init fails with
+          # "a Tenant ID must be configured when authenticating with OIDC".
+          ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
         run: |
           set -euo pipefail
+
+          # bootstrap.sh creates the state backend non-fatally and last, so a
+          # missing account is plausible. Say so here rather than surfacing it
+          # as an opaque backend error.
+          if ! az storage account show \
+                 --name "${{ vars.TFSTATE_STORAGE_ACCOUNT }}" \
+                 --resource-group "${{ vars.TFSTATE_RESOURCE_GROUP }}" >/dev/null 2>&1; then
+            echo "::error::State storage account ${{ vars.TFSTATE_STORAGE_ACCOUNT }} not found in ${{ vars.TFSTATE_RESOURCE_GROUP }}. Re-run scripts/bootstrap.sh."
+            exit 1
+          fi
 
           terraform init \
             -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
