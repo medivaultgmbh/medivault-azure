@@ -33,11 +33,11 @@ provider "azurerm" {
   skip_provider_registration = true
 }
 
+# Deliberately outside the EU: trips gdpr_eu_data_residency, which was added
+# after the demo had to move region. A fixture that does not exercise every
+# policy quietly stops proving the gate works.
 variable "location" {
   type    = string
-  # Deliberately outside the EU: trips gdpr_eu_data_residency, which was added
-  # after the demo had to move region. A fixture that does not exercise every
-  # policy quietly stops proving the gate works.
   default = "eastus"
 }
 

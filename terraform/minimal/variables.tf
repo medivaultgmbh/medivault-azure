@@ -1,12 +1,12 @@
+# Frankfurt. The reference architecture in terraform/ targets West Europe with
+# North Europe paired, as specified in Parts 1-2. The demo deploys to Germany
+# West Central because West Europe refused new resources for this subscription
+# ("RequestDisallowedByAzure: not accepting new customers"). Recorded as
+# EXC-008. MediVault is a German entity, so this narrows residency rather than
+# weakening it.
 variable "location" {
   type        = string
   description = "Azure region. Must be an EU region to satisfy GDPR data residency, exactly as in the full configuration."
-  # Frankfurt. The reference architecture in terraform/ targets West Europe with
-  # North Europe paired, as specified in Parts 1-2. The demo deploys to Germany
-  # West Central because West Europe refused new resources for this subscription
-  # ("RequestDisallowedByAzure: not accepting new customers"). Recorded as
-  # EXC-008. MediVault is a German entity, so this narrows residency rather than
-  # weakening it.
   default     = "germanywestcentral"
 
   validation {
