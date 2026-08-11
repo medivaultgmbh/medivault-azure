@@ -275,6 +275,10 @@ echo "==> Creating Terraform state backend"
 echo "    resource group  : $STATE_RG"
 echo "    storage account : $STATE_SA"
 
+# A fresh subscription frequently has Microsoft.Storage unregistered, which
+# makes account creation fail. Registering is idempotent and cheap.
+az provider register --namespace Microsoft.Storage --subscription "$SUBSCRIPTION_ID" --wait 2>/dev/null || true
+
 az group create --name "$STATE_RG" --location westeurope \
   --subscription "$SUBSCRIPTION_ID" --output none
 
@@ -326,13 +330,17 @@ az storage container create \
   --output none 2>/dev/null || true
 
 # The deploy identity needs data-plane access to read and write state.
-az role assignment create \
-  --assignee-object-id "$SP_OBJECT_ID" \
-  --assignee-principal-type ServicePrincipal \
-  --role "Storage Blob Data Contributor" \
-  --scope "$(az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" --subscription "$SUBSCRIPTION_ID" --query id -o tsv)" \
-  --output none 2>/dev/null || true
-echo "    state access granted to deploy identity"
+SA_ID=$(az storage account show --name "$STATE_SA" --resource-group "$STATE_RG" \
+          --subscription "$SUBSCRIPTION_ID" --query id -o tsv 2>/dev/null || echo "")
+if [ -n "$SA_ID" ]; then
+  az role assignment create \
+    --assignee-object-id "$SP_OBJECT_ID" \
+    --assignee-principal-type ServicePrincipal \
+    --role "Storage Blob Data Contributor" \
+    --scope "$SA_ID" \
+    --output none 2>/dev/null || true
+  echo "    state access granted to deploy identity"
+fi
 
 set -e
 
@@ -348,10 +356,41 @@ fi
 ###############################################################################
 # Output
 ###############################################################################
+###############################################################################
+# Verify what actually exists.
+#
+# The state backend is created non-fatally so a storage failure cannot block
+# credential creation. Non-fatal must not mean unreported: print the true state
+# and exit non-zero if the backend is missing, so this cannot pass silently.
+###############################################################################
+BACKEND_OK=1
+if ! az storage account show --name "$STATE_SA" --resource-group "$STATE_RG"        --subscription "$SUBSCRIPTION_ID" >/dev/null 2>&1; then
+  BACKEND_OK=0
+fi
+
+if [ "$BACKEND_OK" = "0" ]; then
+  cat <<EOF
+
+════════════════════════════════════════════════════════════════════
+ WARNING - identities created, STATE BACKEND MISSING
+════════════════════════════════════════════════════════════════════
+
+The storage account ${STATE_SA} does not exist. Everything else above
+succeeded, so re-running this script is safe and will retry only the backend.
+
+Most likely cause: the Microsoft.Storage resource provider is not registered.
+  az provider register --namespace Microsoft.Storage --wait
+
+The GRC Gate deploy job will refuse to run until this exists.
+
+EOF
+  exit 1
+fi
+
 cat <<EOF
 
 ════════════════════════════════════════════════════════════════════
- Bootstrap complete
+ Bootstrap complete  (state backend verified: ${STATE_SA})
 ════════════════════════════════════════════════════════════════════
 
 Add these as repository VARIABLES (Settings > Secrets and variables >
