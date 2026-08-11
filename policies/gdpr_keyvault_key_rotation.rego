@@ -17,10 +17,11 @@
 #     automatic.time_before_expiry = "P30D" and expire_after = "P90D".
 package compliance.gdpr.keyvault_key_rotation
 
+import data.compliance.lib
 import rego.v1
 
 deny contains msg if {
-	some r in input.planned_values.root_module.resources
+	some r in lib.resources
 	r.type == "azurerm_key_vault_key"
 	not has_rotation_policy(r)
 	msg := sprintf(
@@ -36,7 +37,7 @@ has_rotation_policy(resource) if {
 }
 
 deny contains msg if {
-	some r in input.planned_values.root_module.resources
+	some r in lib.resources
 	r.type == "azurerm_key_vault"
 	r.values.purge_protection_enabled != true
 	msg := sprintf(

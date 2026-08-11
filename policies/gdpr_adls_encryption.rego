@@ -19,10 +19,11 @@
 #     workload managed identity ID.
 package compliance.gdpr.adls_encryption
 
+import data.compliance.lib
 import rego.v1
 
 deny contains msg if {
-	some r in input.planned_values.root_module.resources
+	some r in lib.resources
 	r.type == "azurerm_storage_account"
 	r.values.is_hns_enabled == true # Only enforce CMK on ADLS Gen2 (HNS) accounts
 	not has_customer_managed_key(r)
@@ -54,7 +55,7 @@ has_customer_managed_key(resource) if {
 #
 # gdpr_api_logging.rego uses the same fallback pattern.
 has_customer_managed_key(resource) if {
-	some cfg in input.configuration.root_module.resources
-	cfg.address == resource.address
+	some cfg in lib.config_resources
+	lib.address_matches(resource.address, cfg.address)
 	cfg.expressions.customer_managed_key[_].key_vault_key_id
 }

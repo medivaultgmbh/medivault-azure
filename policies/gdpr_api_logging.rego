@@ -19,10 +19,11 @@
 #     with enabled_log { category = "GatewayLogs" } and a log_analytics_workspace_id.
 package compliance.gdpr.api_logging
 
+import data.compliance.lib
 import rego.v1
 
 deny contains msg if {
-	some apim in input.planned_values.root_module.resources
+	some apim in lib.resources
 	apim.type == "azurerm_api_management"
 	not has_gateway_logs_diagnostic(apim.values.id)
 	msg := sprintf(
@@ -32,7 +33,7 @@ deny contains msg if {
 }
 
 has_gateway_logs_diagnostic(apim_id) if {
-	some diag in input.planned_values.root_module.resources
+	some diag in lib.resources
 	diag.type == "azurerm_monitor_diagnostic_setting"
 	diag.values.target_resource_id == apim_id
 	some log in diag.values.enabled_log
@@ -41,7 +42,7 @@ has_gateway_logs_diagnostic(apim_id) if {
 
 # Also check via configuration references (handles planned_values ID being unknown at plan time)
 has_gateway_logs_diagnostic(_) if {
-	some diag in input.configuration.root_module.resources
+	some diag in lib.config_resources
 	diag.type == "azurerm_monitor_diagnostic_setting"
 	some ref in diag.expressions.target_resource_id.references
 	contains(ref, "azurerm_api_management")

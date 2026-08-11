@@ -25,6 +25,7 @@
 #     leaving the jurisdiction is not.
 package compliance.gdpr.eu_data_residency
 
+import data.compliance.lib
 import rego.v1
 
 # EU/EEA regions only. Deliberately excludes uksouth and ukwest: post-Brexit
@@ -47,8 +48,20 @@ eu_regions := {
 	"spaincentral",
 }
 
+# Pseudo-locations. Action groups and activity log alerts are control-plane
+# metadata objects that Azure requires to be declared as "Global"; they hold no
+# personal data and have no region to assess. Two of these exist in
+# terraform/baseline, and without this exemption the rule denies them the first
+# time it runs against the module - a false positive of exactly the kind
+# EXC-009's sibling finding was about.
+non_regional := {"global"}
+
+# Azure accepts "West Europe", "westeurope" and "WestEurope" interchangeably,
+# so normalise before comparing rather than trusting the author's spacing.
+normalise(loc) := replace(lower(loc), " ", "")
+
 deny contains msg if {
-	some r in input.planned_values.root_module.resources
+	some r in lib.resources
 
 	# Only resources that actually carry a location. Data sources, role
 	# assignments and policy objects have none, and must not be flagged.
@@ -61,10 +74,12 @@ deny contains msg if {
 	is_string(loc)
 	loc != ""
 
-	not eu_regions[lower(loc)]
+	region := normalise(loc)
+	not non_regional[region]
+	not eu_regions[region]
 
 	msg := sprintf(
-		"[GDPR Art.44] %s: location %q is outside the EU/EEA. Personal data must not leave the EU without a transfer mechanism under Chapter V.",
+		"[GDPR Art.44] %s: location \"%s\" is outside the EU/EEA. Personal data must not leave the EU without a transfer mechanism under Chapter V.",
 		[r.address, loc],
 	)
 }

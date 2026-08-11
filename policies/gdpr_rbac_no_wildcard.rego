@@ -21,6 +21,7 @@
 #     at the resource or resource-group scope, not the subscription scope.
 package compliance.gdpr.rbac_no_wildcard
 
+import data.compliance.lib
 import rego.v1
 
 # Broad roles that violate least-privilege at any scope
@@ -30,7 +31,7 @@ broad_roles := {"Owner", "Contributor"}
 subscription_scope_prefix := "/subscriptions/"
 
 deny contains msg if {
-	some r in input.planned_values.root_module.resources
+	some r in lib.resources
 	r.type == "azurerm_role_assignment"
 	r.values.role_definition_name in broad_roles
 	startswith(r.values.scope, subscription_scope_prefix)

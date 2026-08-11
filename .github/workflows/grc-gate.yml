@@ -91,6 +91,15 @@ jobs:
             | sudo tar -xz -C /usr/local/bin conftest
           conftest --version
 
+      # Unit-test the policies before running them. The negative test proves the
+      # gate rejects a bad fixture; these prove it accepts good infrastructure
+      # and still reaches into child modules (EXC-009).
+      - name: Policy unit tests
+        run: |
+          set -euo pipefail
+          pip install --quiet regopy
+          python3 policies/test/test_policies.py
+
       - name: Terraform fmt check
         working-directory: terraform
         run: terraform fmt -check -recursive -diff

@@ -17,10 +17,11 @@
 #     private endpoints for data plane access and service endpoints for management.
 package compliance.gdpr.no_public_storage
 
+import data.compliance.lib
 import rego.v1
 
 deny contains msg if {
-	some r in input.planned_values.root_module.resources
+	some r in lib.resources
 	r.type == "azurerm_storage_account"
 	not r.values.public_network_access_enabled == false
 	msg := sprintf(
@@ -30,7 +31,7 @@ deny contains msg if {
 }
 
 deny contains msg if {
-	some r in input.planned_values.root_module.resources
+	some r in lib.resources
 	r.type == "azurerm_storage_account"
 	r.values.min_tls_version != "TLS1_2"
 	msg := sprintf(

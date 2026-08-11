@@ -17,10 +17,11 @@
 #     and tier = "Continuous7Days".
 package compliance.gdpr.cosmos_pitr
 
+import data.compliance.lib
 import rego.v1
 
 deny contains msg if {
-	some r in input.planned_values.root_module.resources
+	some r in lib.resources
 	r.type == "azurerm_cosmosdb_account"
 	not has_continuous_backup(r)
 	msg := sprintf(
@@ -35,7 +36,7 @@ has_continuous_backup(resource) if {
 }
 
 deny contains msg if {
-	some r in input.planned_values.root_module.resources
+	some r in lib.resources
 	r.type == "azurerm_cosmosdb_account"
 	r.values.public_network_access_enabled != false
 	msg := sprintf(
